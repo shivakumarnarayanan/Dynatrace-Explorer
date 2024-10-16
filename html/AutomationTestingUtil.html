@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>SF Object Explorer</title>
+		<meta HTTP-EQUIV="Pragma" content="no-cache" charset="utf-8">
+	<meta HTTP-EQUIV="Expires" content="-1" charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
+
+	<link rel="stylesheet" type="text/css" href="dygraph.css">	
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+	<link rel="stylesheet" type="text/css" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+	
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+	<script src="./ace/ace-builds/src-noconflict/ace.js" type="text/javascript" charset="UTF-8"></script>
+	<!-- <script type="text/javascript" src="HeapDumpReportUtil.js"></script> -->
+	<script type="text/javascript" src="SFObjectExplorer.js"></script>
+	
+	<style type="text/css" media="screen">
+		#editor{
+			border: 1px solid lightgray;
+			font-family: Monaco;
+		}
+		.ace_editor, .ace_editor *
+		{
+			font-family: "Monaco", "Menlo", "Ubuntu Mono", "Droid Sans Mono", "Consolas", monospace !important;
+		}
+		/* create two equal columsn that floats next to each other */
+		.column{
+			float: left;
+			width: 50%;
+			padding: 10px;
+			box-sizing: border-box;
+			height: 340px;
+		}
+		/* Clear floats after the columns */
+		.row:after{
+			content: "";
+			display: table;
+			clear: both;
+		}
+		/* for checkpoints */
+		.ace_gutter-cell.acebreakpoint{
+			height: 25px;
+			width: 15px;
+			background-color: white;
+			border-radius: 75%,
+			display:inline-block;
+			box-shadow: 0px 0px 1px 1px red inset;
+		}
+
+		.arrow-down{}
+	</style>
+
+	<script type="text/javascript">
+		$(function(){
+			var pstyle = 'border: 1px solid #dfdfdf; padding: 5px;';
+			$('#navid').w2layout(globalnavconfig.layout);
+			w2ui['globalnavlayout'].load('top', 'Navbar.html');
+			w2ui['globalnavlayout'].show('top', 'Navbar.html');
+			w2ui['globalnavlayout'].content('css', '.class1 {color: black}');
+		});	
+	</script>
+
+</head>
+<body>
+	<div id="navid" style="width: 100%; height : 50px;"> </div>
+	<div style="padding: 1px;"></div>
+
+	<div id="contentlayoutid" style="width: 100%; height : 300px;"></div>
+	<div style="padding: 1px;"></div>
+	
+	<div class="row">
+		<div id="editor" name="apextext" class="column" style="width: 100%; height : 425px;"></div>
+	</div>
+	<br>
+	
+	<script type="text/javascript">
+		initializeAceEditor();	
+		var postQuery = '';
+		var _objId;// = _selObj.Id;
+		var _objType;// = _selObj.attributes.type;
+		//widget configuration
+		var sobjectconfig = {
+			layout	: {
+				name	: 'sobjectlayout',
+				padding : 4,
+				panels	: [
+					{ type: 'left', size: '425px', minSize: 300, resizable: true },
+					{ type: 'main', minSize: 300},
+					{ type: 'right', minSize: 500},
+						
+				],
+				onDestroy	: function(event){
+					//placeholder
+					console.log('Object '+event.target+' is destroyed');
+				}
+			},
+			grid : {
+				name : 'sObjectsGrid',
+				/*toolbar : {
+					items : [
+						{ type: 'break' },
+						{ type: 'button', id: 'methodsignatures', caption: 'Method Signatures', img: 'fa fa-list-alt' },
+					],
+					onClick : function(event){
+						var myGrid = w2ui['sObjectsGrid'];
+						var sel = myGrid.getSelcetion();
+						var _selObj = myGrid.get(sel[0]);
+						_objId = _selObj.Id;
+						_objType = _selObj.attributes.type;
+
+					}
+				},*/
+				columns : [
+					{ field: 'Name', caption: 'Object Name', editable: {type: 'text'}, size: '30%' },
+					{ field: 'url', caption: 'URL', editable: {type: 'text'}, size: '50%' },
+				],
+				show : {
+					toolbar	: true, 
+					footer	: true,
+					toolbarSearch	: true,
+					toolbarColumns	: true,
+					lineNumbers		: true,
+					selectColumn	: true,
+					expandColumn	: false
+				},
+
+				onClick : function(event){
+					var grid = this;
+					event.onComplete = function(){
+						var record = this.get(event.recid);
+						_objId = record.id;
+						_objType = record.attributes.type;
+
+						loadDoc("http://localhost:3001/getSObjectDetails/?id="+record.Id+"&type="+record.attributes.type, showResults, 'sobjectdetailsid');
+						if(w2ui['symbolTableGrid']){
+							w2ui['symbolTableGrid'].clear();
+							if(objType == "ApexClass")
+								w2ui['symbolTableGrid'].url = 'http://localhost:3001/getSymbolTable/?objId='+_objId+'&objType='+_objType;
+							else 
+								w2uialert('No method signatires for Triggers');
+							w2ui['symbolTableGrid'].reload();
+						}
+						else{
+							alert('SymbolTable already exist. \n Record Id : '+_objId+'\nrec.attributes.type : '+_objType);
+						}
+					};
+				}
+			}, 
+			grid1 :{
+				name : 'symbolTableGrid',
+				header : '<B>Methods</B>',
+				method : 'GET',												
+				url : 'http://localhost:3001/getSymbolTable/?objId='+_objId+'&objType='+_objType,
+				show : { header : true, columnHeaders : false, toolbar : true }, 
+
+				columns : [
+					{ field: 'mod', caption: 'Modifiers', size: '30%', editable: {type: 'text'} },
+					{ field: 'returnType', caption: 'Return Type', editable: {type: 'text'}, size: '25%' },
+					{ field: 'name', caption: 'Method Name', editable: {type: 'text'}, size: '50%' },
+					{ field: 'param', caption: 'Parameters', editable: {type: 'text'}, size: '75%' },
+				], 
+				
+				show : {
+					toolbar	: true, 
+					footer	: true,
+					
+					toolbarSearch	: true,
+					toolbarColumns	: true,
+					lineNumbers		: true,
+					selectColumn	: true,
+					expandColumn	: false
+				}, 
+
+				parser : function(responseText){
+					var modifiers = ['webService', 'global', 'abstract', 'virtual', 'override', 'private', 'protected', 'public', 'static', 'final'];
+					var finalModifiers = [];
+					var parsedResponse = $.parseJSON(responseText);
+					var methodData = parsedResponse['records'][0].SymbolTable;
+					if(methodData  == null){
+						alert('No SymbolTable. Compile the class for SymbolTable to be created');
+						return {};
+					}
+					var className = methodData.id;
+					methodData = methodData.methods;
+
+					var recid = 1;
+					$(methodData).each(function(i,rec){
+						rec.recid = recid++;
+						finalModifiers = [];
+						for (var k = 0; k < modifiers.length; k++) {
+							var index = (rec.modifiers).indexOf(modifiers[k]);
+							if(index != -1){
+								finalModifiers.push(modifiers[k]);
+							}
+						}
+						if(finalModifiers.indexOf('webService')!=-1 && finalModifiers.indexOf('global')!=-1){
+							finalModifiers.splice(finalModifiers.indexOf('global'),1);
+						}
+
+						rec.mod = finalModifiers.join(' ');
+						rec.param = '( ';
+						var paramLength = rec.parameters.length;
+						$(rec.parameters).each(function(j, parameter){
+							rec.param = rec.param+parameter.type+' '+parameter.name;
+							if(paramLength != (j+1))
+								rec.param+=', ';
+						});
+						rec.param+=' )';
+					});
+					var JSONData = {
+						'status' : 'success',
+						'total' : methodData.length,
+						'records' : methodData
+					};
+					methodData ='';
+					return JSONData;
+				},
+
+				onClick : function(event){
+					var grid = this;
+					event.onComplete = function() {
+						var sel = grid.getSelection();
+						var record = this.get(event.recid);
+
+						console.log(record.name);
+						var editor = ace.edit('editor');
+						editor.execCommand("find");
+						editor.find(record.mod+' '+record.returnType+'.* '+record.name+'.*$', {
+							regExp : true
+						}, true);
+						console.log('Executed find command on ACE editor');
+					}
+				}
+			}
+		};
+
+		var formconfig = {
+			form : {
+				name : 'form',
+				fields : [
+					{ name: 'objectTypeNames', type: 'list', options: {items: objectTypes} },
+					//{ name: 'userNames', id: "userListId", type: 'list'}
+				],
+				onChange : function(target, eventData){
+					switch(target){
+						case "objectTypeNames":
+							var eventdataValnewId;
+							var eventdataValoldId;
+								
+							if(eventData.value_new != null )
+								eventdataValnewId	= eventData.value_new.id;
+							if(eventData.value_previous != null )
+								eventdataValoldId = eventData.value_previous.id;
+							console.log('ObjectType Names Value_New : '+eventdataValnewId+'\nObjectType Names Value_Previous : '+eventdataValoldId);
+							if(eventdataValnewId != eventdataValoldId && eventdataValnewId != "--ObjectTypes--"){
+								fetchSObjects(eventdataValnewId, 'http://localhost:3001/getSObjects', showResults, 'sobjectresultsid');
+							}
+							break;
+						case "objectNames": 
+							console.log('Object Names in Event Data : '+JSON.stringify(eventData));
+							break;
+						default:
+							console.log('Default Event Data : '+JSON.stringify(eventData));
+							break;
+					}
+				},
+			}
+		};
+	</script>
+
+	<script type="text/javascript">
+		$(function(){
+			$('#contentlayoutid').w2layout(sobjectconfig.layout);
+			w2ui['sobjectlayout'].content( 'left', '<br>' 
+				+ '<div id="contentid" style="height:280px"> '
+				+ '		<div class="w2ui-field w2ui-span8" stye="clear: both">'
+				+ '			<label>SF Object Types:</label>'
+				+ '			<input name="objectTypeNames">'
+				+ ' 	</div>'
+			//	+ ' 	<div class="w2ui-field w2ui-span8" stye="clear: both">'
+			//	+ '			<label>Users:</label>'
+			//	+ '			<input name="userNames">'
+			//	+ ' 	</div>'	
+				+ ' </div>'	, 
+				'blur'
+			);
+			w2ui['sobjectlayout'].content('main', '<div id="rawdataid" align="top" style="height:300px;"></div>', 'blur');
+			w2ui['sobjectlayout'].content('right', '<div id="methodsignaturesid" align="top" style="height:300px;"></div>', 'blur');
+			$("#contentid").w2form(formconfig.form);
+			$("#rawdataid").w2grid(sobjectconfig.grid);
+			$("#rawdataid").show();
+			$("#methodsignaturesid").w2grid(sobjectconfig.grid1);
+			$("#methodsignaturesid").show();	
+		});
+	</script>
+</body>
+</html>

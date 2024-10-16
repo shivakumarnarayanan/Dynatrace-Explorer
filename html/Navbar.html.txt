@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title> Turiya - SF Explorer Toolbar</title>
+	<!--
+		<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/cc/font-awesome.min.css">
+		<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+		<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+		<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+		<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+		<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.5.rc1.min.css" />
+		<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.5.rc1.min.js"></script>
+		<script type="text/javascript" src="LoginReportUtil.js"></script>
+		<script type="text/javascript" src="ApiReportUtil.js"></script>
+		<script type="text/javascript" src="RestApiReportUtil.js"></script>
+		<script type="text/javascript" src="URIReportUtil.js"></script>
+	-->
+	<link  rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.1/css/all.min.css">
+	<link rel="stylesheet" type="text/css" href="dygraph.css">	
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.13.0/js/all.min.js"></script>
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="dygraph.js"></script>
+	<script type="text/javascript" src="smooth-plotter.js"></script>
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="ApexCalloutReportUtil.js"></script>
+	<script type="text/javascript" src="ApexTriggerReportUtil.js"></script>
+	<script type="text/javascript" src="ApexExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="RequestFlowReportUtil.js"></script>
+	<script type="text/javascript" src="VFRequestReportUtil.js"></script>
+	<script type="text/javascript" src="QueuedExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="BulkApiReportUtil.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+	
+	<style type="text/css">
+		.w2ui-toolbar{
+			font-size: 65px;
+		}
+	</style>
+	<script type="text/javascript">
+		// Start R22 changes
+		var fromDate = '';
+		var toDate  = '';
+		
+		function getMonday(d) {
+			var a = ($("todate").val() != '')?new Date($("#todate").val()).getDate():0;
+			var b = (new Date(d)).getDate();
+			if((a-b) != 0 && Math.abs(a-b)<6)
+			{
+				$("#fromdate").val((new Date(d)).toLocaleDateString());
+				return;
+			}
+			
+			d = new Date(d);
+			var day = d.getDay();
+			var diff = d.getDate() - day + (day == 0?-6 :1 );
+			var d1 = new Date(d.setDate(diff));
+			d = d1;
+			$('#fromdate').val(d.toLocaleDateString());
+			d1.setDate(d1.getDate()+7);
+			$('#todate').val(d1.toLocaleDateString());
+			globalvars.fromDate = $("#fromdate").val(); 
+			globalvars.toDate = $("#todate").val(); 
+		}
+		//End of R22 changes
+		$(function(){
+			var toolbarModel = {
+				name 	: 'toolbar', 
+				right 	: '<i class="fab fa-tumblr-square fa-2x"></i> <b> </b>',
+				items	:[
+					{ type: 'button', id: 'homeid', text: "<a id=\"sfexplorerid\" href=\"http://localhost:3001/index.html\"><b> Turiya Home</b></a>", icon: 'fab fa-tumblr-square fa-lg' },
+					{ type: 'break', id: 'break0' },
+					{ type: 'menu', id: 'appperfdropdrownid', text: '<b>App Performance Reports</b>', icon: 'fa fa-database', items:[
+						{ type: 'button', id: 'vfrequestreport', text: "<a id=\"vfrequestreport\" onclick=\"loadDoc('http://localhost:3001/findVFRequestEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">VisualForce Request Report</a>" },
+						
+						{ type: 'button', id: 'apexexecutionreport', text: "<a id=\"apexexecutionreport\" onclick=\"loadDoc('http://localhost:3001/findApexExecutionEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">Apex Execution Report</a>" },
+						
+						{ type: 'button', id: 'bulkapireport', text: "<a id=\"bulkapireport\" onclick=\"loadDoc('http://localhost:3001/findBulkApiEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">Bulk API Report</a>" },
+						
+						{ type: 'button', id: 'queuedexecutionreport', text: "<a id=\"queuedexecutionreport\" onclick=\"loadDoc('http://localhost:3001/findQueuedExecutionEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">Queued Execution Report</a>" }, 
+						
+						{ type: 'button', id: 'apexcalloutreport', text: "<a id=\"apexcalloutreport\" onclick=\"loadDoc('http://localhost:3001/findApexCalloutEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">Apex Callout Report</a>" },
+
+						{ type: 'button', id: 'apextriggerreport', text: "<a id=\"apextriggerreport\" onclick=\"loadDoc('http://localhost:3001/findApexTriggerEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">Apex Trigger Report</a>" },
+
+						/**
+						{ type: 'button', id: 'restapireport', text: "<a id=\"restapireportanchor\" onclick=\"loadDoc('http://localhost:3001/findRestApiEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">REST API Report</a>" },
+
+						
+						{ type: 'button', id: 'apireport', text: "<a id=\"apireportanchor\" onclick=\"loadDoc('http://localhost:3001/findApiEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">API Report</a>" },
+						
+						{ type: 'button', id: 'urireport', text: "<a id=\"urireportanchor\" onclick=\"loadDoc('http://localhost:3001/findURIEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">URI Report</a>" },
+						
+						{ type: 'button', id: 'platformencryptionreport', text: "<a id=\"platformencryptionreportanchor\" onclick=\"loadDoc('http://localhost:3001/findPlatformEncryptionEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">Platform Encryption Report</a>" },
+						{ type: 'button', id: 'timebasedworkflowreport', text: "<a id=\"timebasedworkflowreportanchor\" onclick=\"loadDoc('http://localhost:3001/findTimeBasedWorkflowEvents'+'?fromdate='+$('#fromdate').val()+'&todate='+$('#todate').val(), showResults, this.id)\">Time Based Workflow Report</a>" },
+						**/
+					]},
+
+					{ type: 'break', id: 'break1' },
+					{ type: 'menu', id: 'appmgmtdropdrownid', text: '<b>App Management Reports</b>', icon: 'fa fa-cogs', items:[
+						{ type: 'button', id: 'loginreport', text: "<a id=\"loginreportanchor\" onclick=\"loadDoc('http://localhost:3001/findLoginEvents', showResults, this.id)\">Login Report</a>" },
+						{ type: 'button', id: 'apexexecutioncountmenuitemid', text: "<a id=\"apexexecutioncountmenuitemidanchor\" href=\"./ApexVisits.html\">Top Frequently used Apex</a>" },
+						{ type: 'button', id: 'deviceadoptionmenuitemid', text: "<a id=\"deviceadoptionmenuitemidanchor\" onclick=\"\">Device Adoption Report</a>" },
+						{ type: 'button', id: 'dataleakagemenuitemid', text: "<a id=\"dataleakagemenuitemidanchor\" onclick=\"\">Data Leakage Report</a>" },
+						{ type: 'button', id: 'useractivitymenuitemid', text: "<a id=\"useractivitymenuitemidanchor\" onclick=\"\">User Activity Report</a>" },
+					]},
+
+					{ type: 'break', id: 'break2' },
+					{ type: 'menu', id: 'perfutilsdropdrownid', text: '<b>Performance Utils</b>', icon: 'fa fa-wrench', items:[
+						{ type: 'button', id: 'queryplanid', text: "<a id=\"queryplanidanchor\" href=\"./QueryPerf.html\">Query - Explain Plan</a>" },
+						{ type: 'button', id: 'apexperfid', text: "<a id=\"apexperfidanchor\" href=\"./ApexPerf.html\">Apex Code Performance</a>" },
+						{ type: 'button', id: 'sfexplorerid', text: "<a id=\"sfexploreridanchor\" onclick=\"./SFObjectExplorer.html\">SF Object Explorer</a>" },
+						{ type: 'button', id: 'hdexplorerid', text: "<a id=\"hdexploreridanchor\" onclick=\"./HeapdumpExplorer.html\">Heapdump Explorer</a>" },
+					]},
+					{ type: 'spacer', id: 'break3' },
+					{ type: 'html', id: 'daterangeplaceholderid', html: '<div class="w2ui-field" align="right"> <div id="daterangeid"> Report Date: <input type="text" id="fromdate" onchange="getMonday(this.value)"> <input type="text" id="todate"> </div> </div>'},
+				],
+			};
+			$('#toolbar').w2toolbar(toolbarModel);
+			$('#fromdate').w2field('date');
+			$('#todate').w2field('date', {start : $('#fromdate'), end: $('#todate')});
+			if($('#fromdate').val() == 'm/d/yyyy' || $('#fromdate').val() == '') {
+				getMonday(new Date());
+			}
+
+			fromDate = $('#fromdate').val();
+			toDate =  $('#todate').val();
+			
+		});	
+	</script>
+</head>
+<body>
+	<div id ="toolbar" style="width: 100%; height : 35px;"></div>
+</body>
+</html>

@@ -1,0 +1,154 @@
+//----- ApexExecutionReportUtil.js------
+function getFlowOfEventsData(requestFlowJSONStr){
+    var requestFlowJSON = JSON.parse(requestFlowJSONStr);
+    requestFlowJSONStr = '';
+  
+    //var dataStr = "Timestamp, EventType, URI, RunTime, CPUTime, DBTotalTime, UserId\n";
+    var dataStr = "";
+    var labelStr = ["EventType", "URI", "RunTime", "CPUTime", "DBTotalTime", "Userid"];
+  
+    requestFlowJSON.forEach(function(requestFlowEntry){
+      var tempTS = requestFlowEntry.TIMESTAMP;
+      requestFlowEntry.DB_TOTAL_TIME = Number(requestFlowEntry.DB_TOTAL_TIME/1000000000);
+      requestFlowEntry.RUN_TIME = Number(requestFlowEntry.RUN_TIME/1000);
+      requestFlowEntry.CPU_TIME = Number(requestFlowEntry.CPU_TIME/1000);
+      requestFlowEntry.EXEC_TIME = Number(requestFlowEntry.EXEC_TIME/1000);
+      requestFlowEntry.CALLOUT_TIME = Number(requestFlowEntry.CALLOUT_TIME/1000);
+      dataStr = dataStr
+        + tempTS.substr(0,4)+"/" + tempTS.substr(4,2)+"/" + tempTS.substr(6,2)+" " + tempTS.substr(8,2)+":" + tempTS.substr(10,2)+":"  + tempTS.substr(12)
+        + ", "+requestFlowEntry.EVENT_TYPE + ", " + requestFlowEntry.URI
+        + ", "+requestFlowEntry.RUN_TIME + ", " + requestFlowEntry.CPU_TIME
+        + ", "+requestFlowEntry.DB_TOTAL_TIME + ", " + requestFlowEntry.USER_ID_DERIVED + "\n";
+    });
+    addDataToRequestFlow(requestFlowJSON, labelStr);
+    
+    requestFlowJSON = '';
+    return dataStr;
+  }
+  
+  function initializeFlowOfEventsGrid(JSONData){
+    
+    var flowofeventsgridconfig = {
+      layout : {
+        name : "flowofeventslayout",
+        panels : [
+            { type : "bottom", resizable: true }
+        ]
+      } , 
+      grid1 : {
+        name    : 'flowOfEventsGrid',
+        header  : '<B>Flow Of Execution </B>',
+        
+        toolbar : {
+          items : [
+            { type: 'break' },
+            { type: 'spacer' },
+            { type: 'button', id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+          ],
+          onClick : function(event) {
+            switch(event.item.id){
+              case "exportdata":
+                var csv = w2ui['flowOfEventsGrid'].records;
+                var dataStr = "Timestamp, RequestId, EventType, BatchId, JobId, URI, URL, PageName, EntryPoint, Quddity, EntityName, Query, TriggerId, TriggerName, ViewStateSize,  RunTime, CPUTime, Time, CalloutTime, ExecTime, DBTotalTime, #DBBlocks, ExceptionType, ExceptionMessage, UserId\n";
+  
+                event.onComplete = function (){
+                  for(var i =0;i<csv.length; i++){
+                    var csvrec = csv[i];
+  
+                    dataStr = dataStr
+                      + csvrec.TIMESTAMP_DERIVED + ', '
+                      + csvrec.REQUEST_ID + ', '
+                      + csvrec.EVENT_TYPE + ', '
+                      + csvrec.BATCH_ID + ', '
+                      + csvrec.JOB_ID + ', '
+                      + csvrec.URI + ', '
+                      + csvrec.URL + ', '
+                      + csvrec.PAGE_NAME + ', '
+                      + csvrec.ENTRY_POINT + ', '
+                      + csvrec.QUIDDITY + ', '
+                      + csvrec.ENTITY_NAME + ', '
+                      + csvrec.QUERY + ', '
+                      + csvrec.TRIGGER_ID + ', '
+                      + csvrec.TRIGGER_NAME + ', '
+                      + csvrec.TRIGGER_TYPE + ', '
+                      + csvrec.VIEW_STATE_SIZE + ', '
+                      + csvrec.RUN_TIME + ', '
+                      + csvrec.CPU_TIME + ', '
+                      + csvrec.TIME + ', '
+                      + csvrec.CALLOUT_TIME + ', '
+                      + csvrec.EXEC_TIME + ', '
+                      + csvrec.DB_TOTAL_TIME + ', '
+                      + csvrec.DB_BLOCKS + ', '
+                      + csvrec.EXCEPTION_TYPE + ', '
+                      + csvrec.EXCEPTION_MESSAGE + ', '
+                      + csvrec.USER_ID + '\n';
+                    csvrec = "";
+                  }
+                  exportData('ApexExecution', dataStr);
+                }
+                csv = "";
+                break;
+              default:
+                break;
+            }
+          }
+        },
+  
+        columns : [
+          { field: 'TIMESTAMP_DERIVED', caption: 'Timestamp', size: '30%' },
+          { field: 'REQUEST_ID', caption: 'Request Id', size: '30%' },
+          { field: 'EVENT_TYPE', caption: 'Event Type', size: '30%' },
+          { field: 'BATCH_ID', caption: 'Batch Id', size: '30%' },
+          { field: 'JOB_ID', caption: 'Job Id', size: '30%' },
+          { field: 'URI', caption: 'URI', size: '30%'},  
+          { field: 'URL', caption: 'URL', size: '30%' },
+          { field: 'PAGE_NAME', caption: 'Page Name', size: '30%' },
+          { field: 'ENTRY_POINT', caption: 'Entrty Point', size: '30%' },
+          { field: 'QUIDDITY', caption: 'Caller of the Apex', size: '30%' },
+          { field: 'ENTITY_NAME', caption: 'Entity Name', size: '30%' },
+          { field: 'QUERY', caption: 'Query', size: '30%' },
+          { field: 'TRIGGER_ID', caption: 'Trigger Id', size: '30%' },
+          { field: 'TRIGGER_NAME', caption: 'Trigger Name', size: '30%' },
+          { field: 'TRIGGER_TYPE', caption: 'Trigger Type', size: '30%' },          
+          { field: 'VIEW_STATE_SIZE', caption: 'View State Size', size: '30%' },
+          { field: 'RUN_TIME', caption: 'Run Time in s', size: '30%'},  
+          { field: 'CPU_TIME', caption: 'CPU Time in s', size: '30%' },
+          { field: 'TIME', caption: 'Time', size: '30%' },
+          { field: 'CALLOUT_TIME', caption: 'Callout Time in s', size: '30%' },
+          { field: 'EXEC_TIME', caption: 'Exec Time in s', size: '30%' },
+          { field: 'DB_TOTAL_TIME', caption: 'DB Total Time in s', size: '30%' },
+          { field: 'DB_BLOCKS', caption: 'DB Blocks', size: '30%' },
+          { field: 'EXCEPTION_TYPE', caption: 'Exception Type', size: '30%' },
+          { field: 'EXCEPTION_MESSAGE', caption: 'Exception Message', size: '30%' },
+          { field: 'USER_ID', caption: 'UserId', size: '30%' }
+        ],
+        show : {
+          toolbar	: true,
+          footer	: true,
+          header  : true,
+          toolbarSearch	: true,
+          toolbarColumns	: true,
+          lineNumbers		: true,
+          selectColumn	: true,
+          toolbarSave   : false,
+          expandColumn	: false
+        },
+        records : JSONData,
+        multiSelect : true,
+      }
+    };
+    $(function() {
+      var grid1 = $().w2grid(flowofeventsgridconfig.grid1);
+      w2ui.requestflowlayout.html('main', grid1);
+  
+    });
+  }
+  
+  function addDataToRequestFlow(requestFlowJSON, labelStr){
+    var recid = 1;
+    $(requestFlowJSON).each(function(i, rec){
+        rec.recid = recid++;
+    });
+    w2ui['flowOfEventsGrid'].add(requestFlowJSON);
+    requestFlowJSON = '';
+  }

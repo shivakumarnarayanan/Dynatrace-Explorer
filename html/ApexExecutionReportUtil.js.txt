@@ -1,0 +1,212 @@
+//----- ApexExecutionReportUtil.js------
+function getApexExecutionReportData(apexExecutionJSONStr){
+  var apexExecutionJSON = JSON.parse(apexExecutionJSONStr);
+  apexExecutionJSONStr = '';
+
+  //var dataStr = "Timestamp, RunTime, CPUTime, CalloutTime, ExecTime, DBTotalTime, #SOQLQueries\n";
+  var dataStr = "";
+  var labelStr = ["RunTime", "CPUTime", "CalloutTime", "ExecTime", "DBTotalTime", "#Queries"];
+
+  apexExecutionJSON.forEach(function(apexExecutionEntry){
+    var tempTS = apexExecutionEntry.TIMESTAMP;
+    apexExecutionEntry.DB_TOTAL_TIME = Number(apexExecutionEntry.DB_TOTAL_TIME/1000000000);
+    apexExecutionEntry.RUN_TIME = Number(apexExecutionEntry.RUN_TIME/1000);
+    apexExecutionEntry.CPU_TIME = Number(apexExecutionEntry.CPU_TIME/1000);
+    apexExecutionEntry.EXEC_TIME = Number(apexExecutionEntry.EXEC_TIME/1000);
+    apexExecutionEntry.CALLOUT_TIME = Number(apexExecutionEntry.CALLOUT_TIME/1000);
+    dataStr = dataStr
+      + tempTS.substr(0,4)+"/" + tempTS.substr(4,2)+"/" + tempTS.substr(6,2)+" " + tempTS.substr(8,2)+":" + tempTS.substr(10,2)+":"  + tempTS.substr(12)
+      + ", "+apexExecutionEntry.RUN_TIME + ", " + apexExecutionEntry.CPU_TIME
+      + ", "+apexExecutionEntry.CALLOUT_TIME + ", " + apexExecutionEntry.EXEC_TIME
+      + ", "+apexExecutionEntry.DB_TOTAL_TIME + ", " + apexExecutionEntry.NUMBER_SOQL_QUERIES + "\n";
+  });
+  displayApexExecutionReportRawData(apexExecutionJSON);
+  showHideGraphSeries(labelStr);
+
+  apexExecutionJSON = '';
+  return dataStr;
+}
+
+function displayApexExecutionReportRawData(JSONData, labelStr){
+  var recid = 1;
+  $(JSONData).each(function(i,rec){
+    rec.recid = recid++;
+  });
+
+  if(!w2ui['flowOfEventsGrid']){
+    initializeFlowOfEventsGrid();
+  }
+  if(w2ui['apexExecutionGrid']){
+    w2ui['apexExecutionGrid'].destroy();
+  }
+
+  var contentconfig = {
+    grid1 : {
+      name    : 'apexExecutionGrid',
+      header  : '<B>Apex Execution Report</B>',
+      multiSearch : true,
+      searches : [
+        { field: 'RUN_TIME', caption: 'Run Time', type: 'int' },
+        { field: 'CPU_TIME', caption: 'CPU Time', type: 'int' },
+        { field: 'CALLOUT_TIME', caption: 'Callout Time', type: 'int' },
+        { field: 'QUIDDITY', caption: 'Quiddity', type: 'text' },
+        { field: 'IS_LONG_RUNNING_REQUEST', caption: 'Long Running Request?', type: 'text' } 
+      ],
+      toolbar : {
+        items : [
+          { type: 'break' },
+          { type: 'spacer' },
+          { type: 'button', id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+        ],
+        onClick : function(event) {
+          switch(event.item.id){
+            case "exportdata":
+              var csv = w2ui['apexExecutionGrid'].records;
+              var dataStr = "Timestamp, RequestId, EntryPoint, Qyuddity, RunTime, CPUTime, CalloutTime, ExecTime, DBTotalTime, #SOQLQueries\n";
+
+              event.onComplete = function (){
+                for(var i =0;i<csv.length; i++){
+                  var csvrec = csv[i];
+
+                  dataStr = dataStr
+                    + csvrec.TIMESTAMP_DERIVED + ', '
+                    + csvrec.REQUEST_ID + ', '
+                    + csvrec.ENTRY_POINT + ', '
+                    + csvrec.QUIDDITY + ', '
+                    + csvrec.RUN_TIME + ', '
+                    + csvrec.IS_LONG_RUNNING_REQUEST + ', '
+                    + csvrec.CPU_TIME + ', '
+                    + csvrec.CALLOUT_TIME + ', '
+                    + csvrec.EXEC_TIME + ', '
+                    + csvrec.DB_TOTAL_TIME + ', '
+                    + csvrec.NUMBER_SOQL_QUERIES + '\n';
+                  csvrec = "";
+                }
+                exportData('ApexExecution', dataStr);
+              }
+              csv = "";
+              break;
+            default:
+              break;
+          }
+        }
+      },
+
+      columns : [
+        { field: 'TIMESTAMP_DERIVED', caption: 'Timestamp', size: '30%' },
+        { field: 'REQUEST_ID', caption: 'Request Id', size: '30%' },
+        { field: 'ENTRY_POINT', caption: 'Entry Points', size: '30%' },
+        { field: 'QUIDDITY', caption: 'Caller of this Apex', size: '30%' },
+        { field: 'RUN_TIME', caption: 'Run Time in s', size: '30%' },
+        { field: 'IS_LONG_RUNNING_REQUEST', caption: 'Long Running Request?', size: '30%'},  
+        { field: 'CPU_TIME', caption: 'CPU Time in s', size: '30%' },
+        { field: 'CALLOUT_TIME', caption: 'Callout Time in s', size: '30%' },
+        { field: 'EXEC_TIME', caption: 'Exec Time in s', size: '30%' },
+        { field: 'DB_TOTAL_TIME', caption: 'DB Total Time in s', size: '30%' },
+        { field: 'NUMBER_SOQL_QUERIES', caption: '#SOQL Queries', size: '30%' }
+      ],
+      show : {
+        toolbar	: true,
+        footer	: true,
+        header  : true,
+        toolbarSearch	: true,
+        toolbarColumns	: true,
+        lineNumbers		: true,
+        selectColumn	: true,
+        toolbarSave   : false,
+        expandColumn	: false
+      },
+      records : JSONData,
+      multiSelect : true,
+      onClick : function(event) {
+        var grid = this;
+        w2ui['flowOfEventsGrid'].clear();
+        event.onComplete = function() {
+          var sel = grid.getSelection();
+          var record = this.get(event.recid);
+          loadDoc('http://localhost:3001/findEvents/?requestid='+record.REQUEST_ID, showResults, 'requestreport');
+        }
+      }
+    }
+  };
+  $(function() {
+    var grid1 = $().w2grid(contentconfig.grid1);
+    w2ui.globalcontentlayout.html('main', grid1);
+
+  });
+  JSONData = '';
+  dataStr = '';
+}
+
+function getApexExecutionReportOptions(){
+  var opt = {
+    title   : 'Apex Execution Times',
+    height  : 250,
+    width   : 650,
+    labels  : ["Timestamp", "RunTime", "CPUTime", "CalloutTime", "ExecTime", "DBTotalTime", "#SOQLQueries"],
+    visibility: [false, false, false, false, false, false, false ],
+    series  : {
+      '#SOQLQueries'  : {axis : 'y2'}
+    },
+    axes  : {
+      x : {
+        drawGrid : true
+      },
+
+      y : {
+        valueRange : [0, 200],
+        axisLabelWidth : 60
+      },
+
+      y2: {
+        valueRange : [0, 100],
+        labelsKMB  : true
+      }
+    },
+    ylabel  : 'Time in Secs',
+    y2label : '# SOQL Queries',
+    xlabel  : 'Timestamp -->',
+    plotter   : smoothPlotter,
+
+    animatedZooms : true,
+    connectSeparatedPoints  : false,
+    errorBars : false,
+    drawPoints  : true,
+    showRangeSelector   : false,
+    stackedGraph  : false,
+
+    strokeWidth   : 0.5,
+    strokeBorderWidth   : 0.5,
+    highlightCircleSize : 2,
+    fillAlpha : 0.2,
+
+    highlightSeriesOpts : {
+      strokeWidth   : 1,
+      strokeBorderWidth   : 1,
+      highlightCircleSize : 5,
+    },
+    legend  : 'always',
+
+    pointClickCallback : function(event, points){
+      var mydt = new Date(points.xval);
+      var ms = new String(points.xval);
+      var dgtms = ms.substr(ms.length - 3);
+      var datestr = new String(mydt).substr(16,8) + '.' + dgtms;
+      w2ui['apexExecutionGrid'].search('all', datestr);
+      event.stopPropagation();
+      mydt = '';
+      ms = '';
+      dgtms = '';
+    },
+
+    colors :[
+      "rgb(250, 50, 20)",
+      "#006400",
+      "#652121",
+      "#8A2BE2",
+      "#101015",
+      "rgba(20, 50, 250, 0.4)"
+    ],
+  };
+  return opt;
+}

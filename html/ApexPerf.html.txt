@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Apex Performance</title>
+	<meta HTTP-EQUIV="Pragma" content="no-cache" charset="utf-8">
+	<meta HTTP-EQUIV="Expires" content="-1" charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
+	
+	<link rel="stylesheet" type="text/css" href="dygraph.css">	
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+	<link rel="stylesheet" type="text/css" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="HeapDumpReportUtil.js"></script>
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+	<script src="./ace/ace-builds/src-noconflict/ace.js" type="text/javascript" charset="UTF-8"></script>
+	
+	<style type="text/css" media="screen">
+		#editor{
+			border: 1px solid lightgray;
+			font-family: Monaco;
+		}
+		.ace_editor, .ace_editor *
+		{
+			font-family: "Monaco", "Menlo", "Ubuntu Mono", "Droid Sans Mono", "Consolas", monospace !important;
+		}
+		/* create two equal columsn that floats next to each other */
+		.column{
+			float: left;
+			width: 50%;
+			padding: 10px;
+			box-sizing: border-box;
+			height: 340px;
+		}
+		/* Clear floats after the columns */
+		.row : after{
+			content: "";
+			display: table;
+			clear: both;
+		}
+		/* for checkpoints */
+		.ace_gutter-cell.acebreakpoint{
+			height: 25px;
+			width: 15px;
+			background-color: white;
+			border-radius: 75%,
+			display:	inline-block;
+			box-shadow: 0px 0px 1px 1px red inset;
+		}
+
+		.arrow-down{}
+	</style>
+
+	<!--
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.min.js"></script>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="dygraph.js"></script>
+	<script type="text/javascript" src="smooth-plotter.js"></script>
+
+
+	<script type="text/javascript" src="LoginReportUtil.js"></script>
+	<script type="text/javascript" src="RequestFlowReportUtil.js"></script>
+	<script type="text/javascript" src="ApexExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="ApiReportUtil.js"></script>
+	<script type="text/javascript" src="RestApiReportUtil.js"></script>
+	<script type="text/javascript" src="URIReportUtil.js"></script>
+	<script type="text/javascript" src="VFRequestReportUtil.js"></script>
+	<script type="text/javascript" src="ApexTriggerReportUtil.js"></script>
+	<script type="text/javascript" src="QueuedExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="BulkApiReportUtil.js"></script>
+	<script type="text/javascript" src="ApexCalloutReportUtil.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+	<script type="text/javascript" src="HeapDumpReportUtil.js"></script>
+	-->
+	<script type="text/javascript">
+		function submitForm(form, url, cFunction, id){
+			var xhttp;
+			xhttp = new XMLHttpRequest();
+			xhttp.open("POST", url, true);
+			xhttp.onreadystatechange = function(){
+				if(this.readyState == 4 && this.status == 200 ){
+					cFunction(xhttp, id);
+				}
+			};
+
+			var postQuery = editor.getSession().getValue();
+			xhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+			xhttp.send("apextext="+encodeURIComponent(postQuery));
+		}
+	</script>
+
+	<script type="text/javascript">
+		var debugLogGridConfig = {
+			grid : {
+				name	: 'debugLogGrid',
+				columns : [
+					{ field: 'Timestamp', caption: 'Time Stamp', size: '30%' },
+					{ field: 'Event', caption: 'Event', size: '350%' },
+					{ field: 'Details', caption: 'Details', size: '50%' },
+					{ field: 'Info1', caption: 'Info1', editable: {type: 'text'}, size: '50%' },
+					{ field: 'Info2', caption: 'Info2', editable: {type: 'text'}, size: '50%' },
+					{ field: 'Info3', caption: 'Info3', editable: {type: 'text'}, size: '50%' },
+					{ field: 'Info4', caption: 'Info4', editable: {type: 'text'}, size: '50%' },
+				], 
+				toolbar : {
+					items : [
+						{ type: 'break' },
+						{ type: 'button', id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+						{ type: 'break' },
+						{ type: 'button', id: 'heapdump', caption: 'Heap Dump', img: 'fa fa-dropbox' },
+						{ type: 'break' },
+						{ type: 'menu', id: 'summarybasedonid', caption: 'Summarize Based On', img: 'fa fa-filter',  items: [
+							{ type: 'button', id: 'methodbasedid', text: 'Method' },
+							{ type: 'button', id: 'queriesbasedid', text: 'Queries' },
+							{ type: 'button', id: 'dmlbasedid', text: 'DML' },
+							{ type: 'button', id: 'heapbasedid', text: 'Heap' },
+						]},
+					],
+					onClick : function(event) {
+						switch(event.item.id){
+							case "exportdata":
+								var csv = w2ui['debugLogGrid'].records;
+								var dataStr = "Timestamp, Event, Details, Info1, Info2, Info3, Info4\n";
+								
+								event.onComplete = function (){
+									for(var i =0;i<csv.length; i++){
+										var csvrec = csv[i];
+
+										dataStr = dataStr 
+											+ csvrec.Timestamp + ', '
+											+ csvrec.Event + ', '
+											+ csvrec.Details + ', '
+											+ csvrec.Info1 + ', '
+											+ csvrec.Info2 + ', '
+											+ csvrec.Info3 + ', '
+											+ csvrec.Info4 + '\n';
+										csvrec = "";		
+									}
+									exportData('DebugLogs', dataStr);
+								}
+								csv = "";
+								break;
+							case "heapdump":
+								loadDoc("http://localhost:3001/getApexExecutionOverlayResults", showResults, 'heapdumpreportid');
+								break;
+							case "summarybasedonid":
+								switch(event.target)
+								{
+									case "summarybasedonid:methodbasedid":
+										alert("summarybasedonid:methodbasedid -->" + event.target);
+										w2ui['debugLogGrid'].search('Event', "METHOD_ENTRY");
+									break;
+
+									case "summarybasedonid:queriesbasedid":
+										alert("summarybasedonid:queriesbasedid -->" + event.target);
+										w2ui['debugLogGrid'].search('Event', "SOQL_EXECUTE_BEGIN");
+									break;
+
+									case "summarybasedonid:dmlbasedid":
+										alert("summarybasedonid:dmlbasedid -->" + event.target);
+										w2ui['debugLogGrid'].search('Event', "DML_BEGIN");
+									break;
+
+									case "summarybasedonid:heapbasedid":
+										alert("summarybasedonid:heapbasedid -->" + event.target);
+										w2ui['debugLogGrid'].search('Event', "HEAP_DUMP");
+									break;
+
+									default:
+									break
+								}
+
+							default:
+
+								break;
+						}
+					}
+				},
+				show : {
+					toolbar	: true, 
+					footer	: true,
+					toolbarSearch	: true,
+					lineNumbers		: true,
+					selectColumn	: true,
+					expandColumn	: false
+				}
+			}
+		};
+	</script>
+
+	<script type="text/javascript">
+		$(function(){
+			var pstyle = 'border: 1px solid #dfdfdf; padding: 5px;';
+			$('#navid').w2layout(globalnavconfig.layout);
+			w2ui['globalnavlayout'].load('top', 'Navbar.html');
+			w2ui['globalnavlayout'].show('top', 'Navbar.html');
+			w2ui['globalnavlayout'].content('css', '.class1 {color: black}');
+
+			if(w2ui['debugLogGrid']){
+				w2ui['debugLogGrid'].destroy();
+			}
+
+			$('#debuglogcontentid').w2grid(debugLogGridConfig.grid);
+			w2ui['debugLogGrid'].toolbar.disable('heapdump');
+		});	
+	</script>
+
+	<script type="text/javascript">
+		// Parse debug log 
+		function getDebugData(data){
+			var mygrid	= w2ui['debugLogGrid'];
+			var segments= new Array();
+			var regex 	= '';
+
+			//remove blank lines 
+			regex 	= /^\n/mgi;
+			data 	= data.replace(regex, "");
+
+			//Retain lines not startong with timestamp and tag it with #
+			regex 	= /^([A-Z])(.*)\n/mgi;
+			data 	= data.replace(regex, "#$1$2\n");
+
+			//Retain lines startong with \t or sapce and tag it with #
+			regex 	= /^[\s\t]+([A-Z])(.*)\n/mgi;
+			data 	= data.replace(regex, "#$1$2\n");
+
+			//Is heapdump generated? y/n
+			var hdEventCheck =  new RegExp("HEAP_DUMP");
+			var hdPresent 	 =  hdEventCheck.test(data);
+			alert('hdPresent : '+ hdPresent);
+
+			//Parsing th elines and splitting based ondelimiter | and add record id for grid to display records
+			var lines 	= data.split("\n");
+			segments[0] = 'recid|Timestamp|Event|Details|Info1|Info2|Info3|Info4';
+
+			for (var i = 2, j=1; i <lines.length; i++, j++) {
+				if((lines[j]).startsWith("#")){
+					segments[j] = (j) +"||||" + lines[j];
+				}
+				else {
+					segments[j] = (j) +"|" + lines[j];
+				}
+			}
+
+			segments = segments.join("\n");
+			w2ui['debugLogGrid'].clear(false);
+
+			//csvtoJSON is defined in GlobalUtils.js
+			//Assign the JSON array to the grid
+			mygrid.records = csvJSON(segments, '|').records;
+			$('#debuglogcontentid').w2render('debugLogGrid');
+			if(hdPresent == true || hdPresent == "true" )
+				w2ui['debugLogGrid'].toolbar.enable('heapdump');
+			else
+				w2ui['debugLogGrid'].toolbar.disable('heapdump');
+		}
+	</script>
+	<script>
+		//Convert CSV to JSON
+		function toJSON(csv, delimiter){
+			var lines = csv.split("\n");
+			var result = [];
+			var headers = lines[0].split(delimiter);
+	
+			var pushStack = [];
+			var popStack = [];
+	
+			for(var i = 1; i <lines.length;i++){
+				var obj = {};
+				var currentline = lines[i].split(delimiter);
+				for (var j=0;j<headers.length; j++){
+					if(j == 0 && headers[j] == "recid"){
+						obj[headers[j]] = Number(currentline[j]);
+					}
+					else{
+						//to correctlt display HTML tags, encode is called
+						obj[headers[j]] = w2utils.encodeTags(currenrline[j]);
+					}
+				}
+				result.push(obj);
+				buildJSONStak(obj, pushStack, popStack, function(pStack, ppStack, fhtml){
+					pushStack = pStack;
+					popStack = ppStack;
+					if(fhtml != null && fhtml != undefined){
+						//finalHtml = finalHtml +"<tr>"+fhtml+"</tr>";
+						//document.getElementById('debuglogcontenttreeid').innerHTML += "<tr>"+fhtml+"</tr>";
+						//document.getElementById('debuglogcontenttreeid').innerHTML += fhtml;
+					}
+				});
+			}
+			popStack[1].EndTime = pushStack[pushStack.length-1].EndTime ;
+			popStack.forEach(function(item, i){
+				console.log(JSON.stringify(item));
+			});
+	
+			var responseJSON = {
+				"status" : "success",
+				"total"	 : result.length,
+				"records": result
+			};
+	
+			return responseJSON;
+		}
+	</script>
+	<script>
+		function buildJSONStack(debugJSON, pushStack, popStack, cFunc){
+			var htm = '';
+			var tempJson = '';
+			debugJSON.Info1 = debugJSON.Info1 != undefined? debugJSON.Info1: " ";
+			debugJSON.Info2 = debugJSON.Info2 != undefined? debugJSON.Info2: " ";
+	
+			switch(debugJSON.Event){
+				case "EXECUTION_STARTED":
+					tempJson = {
+						"recid" : debugJSON.recid,
+						"Type"  : "EXECUTION_START",
+						"Entry" : debugJSON.Details,
+						"StartTime" : Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, '')),
+						"EndTime" : '',
+						"CodeUnit": []
+					 };
+					 popStack.push(tempJson);
+					 cFunc(pushStack, popStack);
+					break;
+				case "EXECUTION_FINISHED":
+					var endTime = Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, ''));
+					tempJson = popStack.pop();
+	
+					var type = popStack[popStack.length-1].Type;
+					tempJson.EndTime = endTime;
+					
+					switch(type){
+						case "CODE_UNIT" :
+							popStack[popStack.length-1].CodeUnit.push(tempJson);
+						break;
+					}
+					pushStack.push(tempJson);
+					cFunc(pushStack, popStack);
+					break;
+				case "CODE_UNIT_STARTED" : 
+					tempJson = {
+						"recid" : debugJSON.recid,
+						"Type"  : "CODE_UNIT",
+						"Entry" : debugJSON.Info1 +' '+ debugJSON.Info2,
+						"StartTime" : Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, '')),
+						"EndTime" : '',
+						"CodeUnit": [],
+						"MethodTrace" : [],
+						"SOQL" : []
+					 };
+					 popStack.push(tempJson);
+					 cFunc(pushStack, popStack);
+					break;
+				case "CODE_UNIT_FINISHED" : 
+					var endTime = Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, ''));
+					tempJson = popStack.pop();
+	
+					var type = popStack[popStack.length-1].Type;
+					tempJson.EndTime = endTime;
+					
+					switch(type){
+						case "CODE_UNIT" :
+							popStack[popStack.length-1].CodeUnit.push(tempJson);
+						break;
+						case "METHOD" :
+							popStack[popStack.length-1].CodeUnit.push(tempJson);
+						break;
+						case "SOQL" :
+							popStack[popStack.length-1].CodeUnit.push(tempJson);
+						break;
+					}
+					cFunc(pushStack, popStack);
+					break;
+				case "METHOD_ENTRY" : 
+					tempJson = {
+						"recid" : debugJSON.recid,
+						"Type"  : "METHOD",
+						"Line"  : Number(debugJSON.Timestamp.replace(/[\[{()}\]]/g, '')),
+						"Entry" : debugJSON.Info1 +' '+ debugJSON.Info2,
+						"StartTime" : Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, '')),
+						"EndTime" : '',
+						"MethodTrace" : [],
+						"SOQL" : []
+					};
+					popStack.push(tempJson);
+					cFunc(pushStack, popStack);
+					break;
+				case "METHOD_EXIT" : 
+					var endTime = Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, ''));
+					tempJson = popStack.pop();
+	
+					var type = popStack[popStack.length-1].Type;
+					tempJson.EndTime = endTime;
+					
+					switch(type){
+						case "CODE_UNIT" :
+							popStack[popStack.length-1].MethodTrace.push(tempJson);
+						break;
+						case "METHOD" :
+							popStack[popStack.length-1].MethodTrace.push(tempJson);
+						break;
+					}
+					cFunc(pushStack, popStack);
+					break;
+				case "SOQL_EXECUTE_BEGIN" : 
+					tempJson = {
+						"recid" : debugJSON.recid,
+						"Type"  : "SOQL",
+						"Line"  : Number(debugJSON.Timestamp.replace(/[\[{()}\]]/g, '')),
+						"Entry" : debugJSON.Info1,
+						"StartTime" : Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, '')),
+						"EndTime" : '',
+						"SOQLQuery" : debugJSON.Info2,
+						"Rows" : Number((debugJSON.Info1.split(":"))[1])
+					};
+					popStack.push(tempJson);
+					cFunc(pushStack, popStack);	
+					break;
+				case "SOQL_EXECUTE_END" : 
+					var endTime = Number((debugJSON.Timestamp.split(" "))[1].replace(/[{()}]/g, ''));
+					tempJson = popStack.pop();
+	
+					var type = popStack[popStack.length-1].Type;
+					tempJson.EndTime = endTime;
+					
+					switch(type){
+						case "CODE_UNIT" :
+							popStack[popStack.length-1].SOQL.push(tempJson);
+						break;
+						case "METHOD" :
+							popStack[popStack.length-1].SOQL.push(tempJson);
+						break;
+					}
+					cFunc(pushStack, popStack);
+					break;
+				case "DML_BEGIN" : 
+					break;
+				case "DML_END" : 
+					break;
+			}
+		}
+	</script>
+</head>
+<body>
+	<div id="navid" style="width: 100%; height : 50px;"> </div>
+	<div style="padding: 1px;"></div>
+	<br>
+
+	<form name="apexform" onsubmit="submitForm(this, 'http://localhost:3001/apexPerf', showResults, 'apexresultid')" target="uploader_iframe">
+		<div class="row">
+			<div id="editor" name="apextext" class="column"></div>
+			<div class="column">
+				<textarea id="apexresultid" name="apexresult" palceholder="Apex debug results here" rows="21" cols="90"></textarea>
+			</div>
+		</div>
+		<br>
+		<input type="submit" name="submit" value="Debug">
+	</form>
+	<br>
+	
+	<div id="debuglogcontentid" style="width: 100%;height: 270px;"></div>
+	
+	<script type="text/javascript">
+		var textarea = $('#content');
+		var editor = ace.edit("editor");
+
+		editor.setFontSize(13);
+		editor.setTheme("ace/theme/github");
+		editor.setHighlightActiveLine(true);
+		editor.setShowPrintMargin(false);
+		editor.container.style.fontFamily = "Monaco";
+		editor.getSession().setMode("ace/mode/apex");
+		editor.getSession().on('change', function(){
+			textarea.val(editor.getSession().getValue());
+		});
+		textarea.val(editor.getSession().getValue());
+	</script>
+
+	<iframe id="uploader_iframe" name="uploader_iframe" style="display: none;"></iframe>
+	<br><br>
+</body>
+</html>
+
+

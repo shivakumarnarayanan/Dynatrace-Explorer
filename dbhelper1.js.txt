@@ -1,0 +1,438 @@
+const MongoClient = require('mongodb').MongoClient;
+const assert = require ('assert');
+//DB Server Connection URL 
+const url = 'mongodb://localhost:27017';
+const dbName = 'Turiya' ;
+
+fs = require("fs");
+
+module.exports = {
+	dbconnect : function(){
+		//Use Connect method to connect to the server
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			client.close();
+		});
+	},
+	// -----Insert JSON documents -----
+	loadJSON : function(docArray, tableName, callback){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			
+			const insertDocuments = function(db, callback){
+				//Get the document collection
+				const collection = db.collection(tableName);
+
+				//Insert documents
+				collection.insertMany(docArray, function(err, results){
+					if(err) console.log('Error Loading JSON : '+ err);
+					console.log('Inserted documents into the collection ' + results);
+				});
+			}
+			callback.bind(this, docArray.length, docArray);
+			insertDocuments(db, callback);
+			client.close();
+		});
+	},
+
+	loadEvents : function(docArray, file, tableName){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			
+			const insertDocuments = function(db, callback){
+				//Get the document collection
+				const collection = db.collection(tableName);
+
+				//Insert documents
+				collection.insetMany(docArray, function(err, results){
+					if(err) console.log('File '+ file+ ' cannot be loaded: '+ err);
+					console.log('Inserted '+ results.result.n+ ' documents into the collection ');
+					callback(file, results)
+				});
+			}
+			insertDocuments(db, module.exports.dummyCallback)
+			client.close();
+		});
+	},
+
+	findEvents : function(tableName, criteria, eventRequestId, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			var o = JSON.stringify(criteria);
+			collection.find({"REQUEST_ID" : eventRequestId })
+				.sort({"TIMESTAMP" : 1 })
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findEventsUsingJobID : function(tableName, criteria, eventJobId, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			var o = JSON.stringify(criteria);
+			collection.find({"JOB_ID" : eventJobId })
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findApexExceptionEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			var o = JSON.stringify(criteria);
+			collection.find(criteria)
+				.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findLoginEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			var o = JSON.stringify(criteria);
+			collection.aggregate([
+				{$match : {"EVENT_TYPE" : "Login"} },
+				{$goup : {_id : { $substr : ["$TIMESTAMP",0,14]}, total : {$sum : 1} }},
+				{$sort :{"_id" : 1}}
+			])
+			.toArray(function(err, docs){
+				assert.strictEqual(null, err);
+				res.send(docs);
+			});
+			client.close();
+		});
+	},
+
+	findApexExecutionEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findApiEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findRestApiEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findVFRequestEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					console.log('Query Output : '+JSON.stringify(docs));
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findURIEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			vconsole.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findApexTriggerEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findFrequentlyUsedApex : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			var o = JSON.stringify(criteria);
+			collection.aggregate([
+				{$match : {"EVENT_TYPE" : "ApexExecution"} },
+				{$goup : {_id : "$ENTRY_POINT", total : {$sum : 1} }},
+				{$sort :{"total" : -1}}
+			])
+			.toArray(function(err, docs){
+				assert.strictEqual(null, err);
+				res.send(docs);
+			});
+			client.close();
+		});
+	},
+
+	findQueuedExecutionEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findBulkApiEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findApexCalloutEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findPlatformEncryptionEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					res.send(docs);
+				});
+			client.close();
+		});
+	},
+
+	findTopEvents : function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.aggregate(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					var result  = {
+						'totalSize' : docs.length,
+						'records'   : docs
+					};
+					res.send(result);
+				});
+			client.close();
+		});
+	},
+	
+	findApexJobs: function(tableName, criteria, res){
+		MongoClient.connect(url, {useNewUrlParser: true}, function(err, client){
+			assert.strictEqual(null, err);
+			console.log('Connected successfuly to the DB server');
+			const db = client.db(dbName);
+			const collection = db.collection(tableName);
+
+			console.log('Criteria ->: '+JSON.stringify(criteria));
+			collection.find(criteria)
+				//.sort({"TIMESTAMP" : 1})
+				.toArray(function(err, docs){
+					assert.strictEqual(null, err);
+					var result  = {
+						'status' : "success",
+						'totalSize' : docs.length,
+						'records'   : docs
+					};
+					res.send(result);
+				});
+			client.close();
+		});
+	},
+
+	readFilesFromLogDir : function(dirName, callback){
+		var fs = require('fs');
+		var walkPath = dirName;
+		var walk = function(dir, done){
+			fs.readdir(dir, function(error, list){
+				list = list.filter(item => !(/(^|\/)\.[^\/\.]/g).test(item));
+				if(error){
+					return done(error);
+				}
+				var i = 0;
+				//Anonymous function call
+				(
+					function next(){
+						var file = list[i++];
+						if(!file) {
+							return done(null);
+						}
+						file = dir +'/'+file;
+						fs.stat(file, function(error, stat){
+							if(stat && stat.isDirectory()){
+								walk(file, function(error){
+									next();
+								});
+							}
+							else{
+								var lines = require('fs').readFileSync(file, 'utf-8')
+									.split('\n')
+									.filter(Boolean);
+								console.log(file);
+								module.exports.loadEvents(JSON.parse(lines), file, "Events");
+								next();
+							}
+						});
+					}
+				)();
+			});
+		};
+		console.log('-----------------------------');
+		console.log('-----Processing-------');
+		console.log('-----------------------------');
+		walk(walkPath, function(error){
+			if(error)
+				throw error;
+			else {
+				console.log('-----------------------------');
+				console.log('-----Finished-------');
+				console.log('-----------------------------');
+			}
+		});	
+	},
+
+	dummyCallback : function(file, results){
+		console.log('Inserted '+results.result.n + ' from '+file);
+	}
+}

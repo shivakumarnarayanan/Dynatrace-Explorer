@@ -1,0 +1,160 @@
+//helpers1.js
+var fs = require ('fs');
+var stream = require('stream');
+var _requestUrls = [];
+
+module.exports = {
+	//Make directory called during server startup
+	makeDirectory : function(dirName, fs){
+		var dir = "./"+dirName;
+		if(!fs.existsSync(dir)){
+			fs.mkdirSync(dir);
+		}
+	},
+
+	//List files from SF -> download the file contents -> Convert to JSON and write to another file
+	listFiles : function(req, res, headers, conn, url, compress){
+		var noOfFiles ;
+		//First call  the API to get the list of files from SF
+		conn.requestGet(url, headers, function(err, results){
+			noOfFiles = results['totalSize'];
+			fileList = results['records'];
+			module.exports.getFiles(req, res, fileList, noOfFiles, conn, compress, conn.accessToken);
+		});
+	},
+
+	getFiles : function(req, res, fileList, totalSize, conn, compress, accessToken){
+		console.log('Total number of file -->'+totalSize + '\n');
+		for (var i = 0; i <totalSize; i++) {
+			//Pull attributes out of JSON for file naming
+			var ids = fileList[i]['Id'];
+			var eventType = fileList[i]['EventType'];
+			var dates = fileList[i]['LogDate'];
+
+			requestUrl = conn.instanceUrl + '/services/data/v44.0/sobjects/EventLogFile/'+ids + '/LogFile';
+			_requestUrls[i] = requestUrl;
+
+			(
+				function(){
+					var request = {
+						url : requestUrl,
+						eventtype : eventType,
+						headers :{
+							"Authorization" 	: "Bearer "+ accessToken,
+							"Content-Encoding" 	: "gzip",
+							"Accept-Encoding"	: "gzip",
+							"Content-Type"		: "text/csv; charset=UTF-8",
+							"Transfer-Encoding"	: "chunked",
+							"X-PrettyPrint"		: "1"
+						}
+					};
+					conn.request(_request.url, _request.headers, (err, resp, data)=>{
+						if(err && (err.code == "ECONNRESET" || err.code == "ETIMEDOUT") ){
+							console.log('Error processing url '+_request.url);
+							return console.log('Error code !! '+ err.code);
+						}
+						console.log('Currently processing url'+_request.url);
+						module.exports.convertToNumberTypes(resp);
+						var data = JSON.stringify(resp);
+						var chunks = module.exports.chunkSubstr(data, 8192);
+						resp = '';
+						data = '';
+						console.log('chunks.length --->'+chunks.length);
+
+						var stream = fs.createWriteStream("./elf/eventlogs_"+_request.eventtype + "_"+Date.now()+".json", {flags : "a"});
+						
+						(async() => {
+							const start = process.memoryUsage().heapUsed;
+							for (var i = 0; i <chunks.length; i++) {
+								stream.write(chunks[i]);
+								chunks[i] = '';
+							}
+							const used = (process.memoryUsage().heapUsed - start)/1024/1024;
+							console.log(`${Math.round(used*100)/100} MB`);
+						})();		
+						
+						stream.end();
+						console.log("Completed processing url" +_request.url);
+					});
+				}
+			)();
+		}
+
+	},
+
+	getFiles_csv : function(req, res, fileList, totalSize, conn, compress, accessToken){
+		console.log('Total number of file -->'+totalSize + '\n');
+		for (var i = 0; i <totalSize; i++) {
+			//Pull attributes out of JSON for file naming
+			ids = fileList[i]['Id'];
+			eventType = fileList[i]['EventType'];
+			dates = fileList[i]['LogDate'];
+
+			requestUrl = conn.instanceUrl + '/services/data/v44.0/sobjects/EventLogFile/'+ids + '/LogFile';
+			_requestUrls[i] = requestUrl;
+
+			(
+				function(){
+					var request = {
+						url : requestUrl,
+						eventtype : eventType,
+						headers :{
+							"Authorization" 	: "Bearer "+ accessToken,
+							"Content-Encoding" 	: "gzip",
+							"Accept-Encoding"	: "gzip",
+							"Content-Type"		: "text/csv; charset=UTF-8",
+							"Transfer-Encoding"	: "chunked",
+							"X-PrettyPrint"		: "1"
+						}
+					};
+					conn.request(_request.url, _request.headers, (err, resp, data)=>{
+						if(err && (err.code == "ECONNRESET" || err.code == "ETIMEDOUT") ){
+							console.log('Error processing url '+_request.url);
+							return console.log('Error code !! '+ err.code);
+						}
+						console.log('Currently processing url'+_request.url);
+						var data = resp;
+						var stream = fs.createWriteStream("./elf/eventlogs_"+_request.eventtype + "_"+Date.now()+".csv", {flags : "a"});
+						stream.write(data);
+						stream.end();
+						console.log("Completed processing url" +_request.url);
+					});
+				}
+			)();
+		}
+	},
+
+	chunkSubstr : function(str, size){
+		const numChunks = Math.ceil(str.length/size);
+		const chunks = new Array(numChunks);
+
+		for (let i = 0,o=0;i<numChunks; ++i,o+=size) {
+			chunks[i] = str.substr(o,size);
+		}
+		return chunks;
+	},
+
+	convertToNumberTypes : function(JSONData){
+		console.log('..Conversion Started ...');
+		for (let i=0;i<JSONData.length;i++){
+			JSONData[i].hasOwnProperty('CALLOUT_TIME')? JSONData[i].CALLOUT_TIME = Number(JSONData[i].CALLOUT_TIME):'';
+			JSONData[i].hasOwnProperty('CPU_TIME')? JSONData[i].CPU_TIME = Number(JSONData[i].CPU_TIME):'';
+			JSONData[i].hasOwnProperty('EXEC_TIME')? JSONData[i].EXEC_TIME = Number(JSONData[i].EXEC_TIME):'';
+			JSONData[i].hasOwnProperty('RUN_TIME')? JSONData[i].RUN_TIME = Number(JSONData[i].RUN_TIME):'';
+			JSONData[i].hasOwnProperty('TIME')? JSONData[i].TIME = Number(JSONData[i].TIME):'';
+			JSONData[i].hasOwnProperty('DB_TOTAL_TIME')? JSONData[i].DB_TOTAL_TIME = Number(JSONData[i].DB_TOTAL_TIME):'';
+			JSONData[i].hasOwnProperty('DB_CPU_TIME')? JSONData[i].DB_CPU_TIME = Number(JSONData[i].DB_CPU_TIME):'';
+			JSONData[i].hasOwnProperty('DB_BLOCKS')? JSONData[i].DB_BLOCKS = Number(JSONData[i].DB_BLOCKS):'';
+			JSONData[i].hasOwnProperty('NUMBER_FAILURES')? JSONData[i].NUMBER_FAILURES = Number(JSONData[i].NUMBER_FAILURES):'';
+			JSONData[i].hasOwnProperty('NUMBER_OF_RECORDS')? JSONData[i].NUMBER_OF_RECORDS = Number(JSONData[i].NUMBER_OF_RECORDS):'';
+			JSONData[i].hasOwnProperty('NUMBER_SOQL_QUERIES')? JSONData[i].NUMBER_SOQL_QUERIES = Number(JSONData[i].NUMBER_SOQL_QUERIES):'';
+			JSONData[i].hasOwnProperty('NUM_RESULTS')? JSONData[i].NUM_RESULTS = Number(JSONData[i].NUM_RESULTS):'';
+			JSONData[i].hasOwnProperty('RANK')? JSONData[i].RANK = Number(JSONData[i].RANK):'';
+			JSONData[i].hasOwnProperty('RESPONSE_SIZE')? JSONData[i].RESPONSE_SIZE = Number(JSONData[i].RESPONSE_SIZE):'';
+			JSONData[i].hasOwnProperty('ROWS_PROCESSED')? JSONData[i].ROWS_PROCESSED = Number(JSONData[i].ROWS_PROCESSED):'';
+			JSONData[i].hasOwnProperty('ROW_COUNT')? JSONData[i].ROW_COUNT = Number(JSONData[i].ROW_COUNT):'';
+			JSONData[i].hasOwnProperty('LIMIT_USAGE_PERCENT')? JSONData[i].LIMIT_USAGE_PERCENT = Number(JSONData[i].LIMIT_USAGE_PERCENT):'';
+		}
+		console.log('.. Conversion Ended ..');
+	}
+};

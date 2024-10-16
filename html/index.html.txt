@@ -1,0 +1,62 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+	<title> Turiya - SF Explorer</title>
+	<link rel="stylesheet" type="text/css" href="dygraph.css">	
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+	<link rel="stylesheet" type="text/css" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+	<script type="text/javascript" src="dygraph.js"></script>
+	<style type="text/css">
+		#chart{
+			left: 50px;
+			right: 150px;
+			height: 400px
+		}
+		.dygraph-legend{
+			right: 70px !important;
+			background-color: transparent !important;
+		}
+	</style>
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="smooth-plotter.js"></script>
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="ApexCalloutReportUtil.js"></script>
+	<script type="text/javascript" src="ApexTriggerReportUtil.js"></script>
+	<script type="text/javascript" src="ApexExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="RequestFlowReportUtil.js"></script>
+	<script type="text/javascript" src="VFRequestReportUtil.js"></script>
+	<script type="text/javascript" src="QueuedExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="BulkApiReportUtil.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+
+	<script type="text/javascript">
+		$(function(){
+			var pstyle = 'border: 1px solid #dfdfdf; padding: 5px;';
+			$('#navid').w2layout(globalnavconfig.layout);
+			w2ui['globalnavlayout'].load('top', 'Navbar.html');
+			//w2ui['globalnavlayout'].content('css', '.class1 {color: black}');
+
+			$('#contentlayoutid').w2layout(globalcontentlayoutconfig.layout);
+			w2ui['globalcontentlayout'].content('left', '<br> <div id="contentsid"></div><div id="seriesid"></div>', 'blur');
+			w2ui['globalcontentlayout'].show('main', '<div id="rawdataid" align="top" style="width:100%; height:350px; margin-left:10px;"> </div>');
+			
+			$('#requestflowlayoutid').w2layout(requestflowconfig.layout);
+			w2ui['requestflowlayout'].content('main', '<div id="requestflowid" align="top" style="width:100%; height:350px; margin-left:10px;"> </div>');
+			//w2ui['requestflowlayout'].show('main', '<div id="requestflowid" align="top" style="width:100%; height:350px; margin-left:10px;"> </div>');			
+		});	
+	</script>
+
+</head>
+<body>
+	<div id="navid" style="width: 100%; height : 35px;"> </div>
+	<div style="padding: 1px;"></div>
+
+	<div id="contentlayoutid" style="width: 100%; height : 340px;"></div>
+	<div style="padding: 1px;"></div>
+
+	<div id="requestflowlayoutid" style="width: 100%; height : 400px;"></div>
+</body>
+</html>

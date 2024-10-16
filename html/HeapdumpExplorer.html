@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Heapdump Explorer</title>
+	<meta HTTP-EQUIV="Pragma" content="no-cache" charset="utf-8">
+	<meta HTTP-EQUIV="Expires" content="-1" charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8">
+
+	<link rel="stylesheet" type="text/css" href="dygraph.css">	
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/cc/font-awesome.min.css">
+	<link rel="stylesheet" type="text/css" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+
+	<script src="./ace/ace-builds/src-non-conflict/ace.js" type="text/javascript" charset="UTF-8"></script>
+
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/2.7.2/Chart.min.js"></script>
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="dygraph.js"></script>
+	<script type="text/javascript" src="smooth-plotter.js"></script>
+
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="LoginReportUtil.js"></script>
+	<script type="text/javascript" src="RequestFlowReportUtil.js"></script>
+	<script type="text/javascript" src="ApexExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="ApiReportUtil.js"></script>
+	<script type="text/javascript" src="RestApiReportUtil.js"></script>
+	<script type="text/javascript" src="URIReportUtil.js"></script>
+	<script type="text/javascript" src="VFRequestReportUtil.js"></script>
+	<script type="text/javascript" src="ApexTriggerReportUtil.js"></script>
+	<script type="text/javascript" src="QueuedExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="BulkApiReportUtil.js"></script>
+	<script type="text/javascript" src="ApexCalloutReportUtil.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+	<script type="text/javascript" src="HeapDumpReportUtil.js"></script>
+	<script type="text/javascript" src="SFObjectExplorer.js"></script>
+	
+	<script type="text/javascript">
+		$(function(){
+			var pstyle = 'border: 1px solid #dfdfdf; padding: 5px;';
+			$('#navid').w2layout(globalnavconfig.layout);
+			w2ui['globalnavlayout'].load('top', 'Navbar.html');
+			w2ui['globalnavlayout'].show('top', 'Navbar.html');
+			w2ui['globalnavlayout'].content('css', '.class1 {color: black}');
+		});	
+	</script>
+
+
+</head>
+<body>
+	<div id="navid" style="width: 100%; height : 50px;"> </div>
+	<div style="padding: 1px;"></div>
+
+	<div id="contentlayoutid" style="width: 100%; height : 340px;"></div>
+	<div style="padding: 1px;"></div>
+	<br>
+
+	<script type="text/javascript">
+		var contentconfig = {
+			layout : {
+				name 	: 'heapdumplayout',
+				padding : 4,
+				panels 	: [
+					{ type: 'left', size: '50%', minSize: 275, resizable: true },
+					{ type: 'main', minSize: 275, resizable: true},
+				]
+			},
+			grid2 : {
+				name : 'grid2',
+				header : 'Heapdump Details',
+				show : { header : true, columnHeaders : false, toolbar : true }, 
+				toolbar : {
+					items : [
+						{ type: 'break' },
+						{ type: 'button' id: 'heapdumpsummary', caption: 'Heap Dump Summary', img: 'fa fa-compress' },
+						
+						{ type: 'break' },
+						{ type: 'button' id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+					],
+
+					onClick : function(event){
+						switch(event.item.id){
+							case "heapdumpsummary" :
+								var recs = w2ui['grid2'].records;
+								var heapdumpJSON = '';
+								var extentJSON = new Array();
+								var recid = 1;
+
+								if(recs != null && recs.length > 0){
+									for(var i = 0;i< recs.length; i++){
+										if(recs[i].name == "HeapDump"){
+											heapdumpJSON = recs[i].value;
+										}
+									}
+
+									if(heapdumpJSON != null && heapdumpJSON != '' ){
+										$(heapdumpJSON.extents).each(function(i, rec){
+											var temp = { 'recid': recid++, 'collectionType': w2utils.encodeTags(rec.collectionType), 'typename': w2utils.encodeTags(rec.typeName), 'count': rec.count, 'size': rec.totalSize };
+											extentJSON.push(temp);
+										});
+									}
+								}
+								w2popup.open({
+									title 	: 'Heapdump Summary',
+									width 	: 800,
+									height	: 400,
+									showMax : true,
+									body 	: '<div id="heapdumpsummarygridid" style="position: absolute; left: 5px; top: 5px; right: 5px; bottom: 5px"></div>',
+									
+									onClose	: function(event){
+										if(w2ui['heapdumpSummaryGrid']){
+											w2ui['heapdumpSummaryGrid'].clear();
+											w2ui['heapdumpSummaryGrid'].destroy();
+										}
+									},
+									
+									onOpen 	: function(event){
+										event.onComplete = function (){
+											if(w2ui['heapdumpSummaryGrid']){
+												alert('HD Summary pop-up closing : '+event.type, event);
+												w2ui['heapdumpSummaryGrid'].destroy();
+											}
+											$('#w2ui-popup #heapdumpsummarygridid').w2grid({
+												show : { header : true, columnHeaders : false, toolbar : true }, 
+												name : 'heapdumpSummaryGrid',
+												toolbar : {
+													items : [
+														{ type: 'break' },
+														{ type: 'button' id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+													],
+													onClick : function(event){
+														switch(event.item.id){
+															case "exportdata":
+																alert(extentJSON);
+																var csv = extentJSON;
+																var dataStr = "TypeName,Collection,Count,Size\n";
+																
+																event.onComplete = function (){
+																	for(var i =0;i<csv.length; i++){
+																		var csvrec = csv[i];
+
+																		dataStr = dataStr 
+																			+ csvrec.typeName + ', '
+																			+ csvrec.collectionType + ', '
+																			+ csvrec.count + ', '
+																			+ csvrec.size + '\n';
+																		csvrec = "";		
+																	}
+																	exportData('HeapDump Details', dataStr);
+																}
+																csv = "";
+																break;
+															default:
+																break;
+														}
+													}
+												},
+												columns : [
+													{ field: 'typename', caption: 'Object Type', size: '310px' },
+													{ field: 'collectionType', caption: 'Collection Type', editable: {type: 'text'}, size: '210px' },
+													{ field: 'count', caption: 'count', editable: {type: 'text'}, size: '100px', sortable: true },
+													{ field: 'size', caption: 'size', editable: {type: 'text'}, size: '100px', sortable: true},
+												], 
+												records : extentJSON,
+												show : {
+													toolbar	: true, 
+													footer	: true,
+													header 	: true,
+													toolbarSearch	: true,
+													toolbarColumns	: true,
+													lineNumbers		: true,
+													selectColumn	: true,
+													expandColumn	: false
+												}
+											});
+										};
+									}
+								});
+
+								break;
+							case "exportdata" :
+								var csv = w2ui['grid2'].records;
+								var dataStr = "Name,Value\n";
+								
+								event.onComplete = function (){
+									for(var i =0;i<csv.length; i++){
+										var csvrec = csv[i];
+
+										dataStr = dataStr 
+											+ csvrec.name + ', '
+											+ csvrec.value + '\n';
+										csvrec = "";		
+									}
+									exportData('HeapDump Details', dataStr);
+								}
+								dataStr ='';
+								csv = '';
+								break;
+							default:
+								break;
+						}
+					}
+				},
+				columns : [
+					{ field: 'name', caption: 'Name', size: '100px', style: 'background-color: #efefef; border-bottom: 1px solid white; padding-right: 5px;', attr: 'align-right' },
+					{ field: 'value', caption: 'Value', size: '100%', editable: { type: 'text'} }
+				]
+			},
+
+			grid : {
+				name 	: 'heapdumpGrid',
+				header 	: '<B>Heapdump Report</B>',
+				method 	: 'GET',
+				url 	: 'http://localhost:3001/getApexExecutionOverlayResults',
+				multiSelect: false,
+				toolbar : {
+					items : [
+						{ type: 'break' },
+						{ type: 'button' id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+					],
+					onClick : function(event) {
+						switch(event.item.id){
+							case "exportdata":
+								var csv = w2ui['heapdumpGrid'].records;
+								var dataStr = "Id, ClassName, ActionScriptType, Line, UserId, LastModifiedDate\n";
+								
+								event.onComplete = function (){
+									for(var i =0;i<csv.length; i++){
+										var csvrec = csv[i];
+
+										dataStr = dataStr 
+											+ csvrec.Id + ', '
+											+ csvrec.ClassName + ', '
+											+ csvrec.ActionScriptType + ', '
+											+ csvrec.Line + ', '
+											+ csvrec.UserId + ', '
+											+ csvrec.LastModifiedDate + '\n';
+										csvrec = "";		
+									}
+									exportData('HeapDump', dataStr);
+								}
+								csv = "";
+								break;
+							default:
+								break;
+						}
+					}
+				},
+
+				show : {
+					toolbar	: true, 
+					footer	: true,
+					toolbarSearch	: true,
+					toolbarColumns	: true,
+					lineNumbers		: true,
+					selectColumn	: true,
+					expandColumn	: false
+				},
+
+				columns : [
+					{ field: 'Id', caption: 'Id', size: '30%' },
+					{ field: 'ClassName', caption: 'ClassName', size: '30%' },
+					{ field: 'ActionScriptType', caption: 'ActionScriptType', size: '30%' },
+					{ field: 'Line', caption: 'Line', size: '30%' },
+					{ field: 'UserId', caption: 'UserId', size: '30%' },
+					{ field: 'LastModifiedDate', caption: 'LastModifiedDate', size: '30%' },
+				],
+
+				parser	: function(responseText){
+					var JSONData = $.parseJSON(responseText);
+					var data = JSONData['records'];
+					var recid = 1;
+					$(data).each(function(i,rec){
+						rec.recid = recid++;
+					});
+					JSONData['records'] = data;
+					data = '';
+					return JSONData;
+				}, 
+
+				onClick : function(event) {
+					cntr = 1 ;
+					jsonRes =[];
+					w2ui['grid2'].clear();
+					var grid = this;
+
+					event.onComplete = function(){
+						var sel = grid.getSelection();
+						var record = this.get(event.recid);
+						loadDoc("http://localhost:3001/getHeapDumpDetails/?id="+record.Id, showResults, 'heapdumpdetailsid');
+					};
+				}
+			}
+		};
+	</script>
+	<script type="text/javascript">
+		//Layout contents
+		$(function(){
+			$('#contentlayoutid').w2layout(contentconfig.layout);
+			w2ui['heapdumplayout'].content('left', '<div id="contentsid" style="height:350px;>', 'blur');
+			w2ui['heapdumplayout'].show('main', '<div id="rawdataid" align="top" style="height:350px;"> </div>', 'blur');
+
+			$('#contentsid').w2grid(contentconfig.grid);
+			$('#contentsid').show();
+			
+			$('#rawdataid').w2grid(contentconfig.grid2);
+			$('#rawdataid').show();
+		});
+		
+		//Populate JSON tree in the grid after traversing
+		function populateHeapDump(JSONData){
+			w2ui['grid2'].clear();
+			var hdJSON = [];
+			traverse(JSON.parse(JSONData), process);
+			// this variable jsonRes is first used in onClick and populated in process function
+			w2ui['grid2'].add(jsonRes);
+		}
+
+		//Traverse the JSON Tree to find & populate heapdump
+		function traverse(o, func){
+			for(var i in o){
+				func.apply(this, [i, o[i], cntr++]);
+				if(o[i] !== null && typeof(o[i] == 'object'))
+					traverse(o[i], func);
+			}
+		}
+
+		//callback function for traverse(). Called as node traverses every property with Key & Value
+		function process(key, value, cntr){
+			if(key == '0' || key == 0)
+				return;
+			var temp = '';
+			if(typeof(value) == "object"){
+				temp = { 'recid': cntr, 'name': key, 'value': value, w2ui: { style: 'background-color : #C2F5B4' } };
+			}
+			else {
+				temp = { 'recid': cntr, 'name': key, 'value': value };
+			}
+			jsonRes.push(temp);
+		}
+	</script>
+</body>
+</html>

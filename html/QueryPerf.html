@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Query Perf - Explain Plan</title>
+	<link rel="stylesheet" type="text/css" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.5.rc1.min.css" />
+    <script src="http://ajax.googleapis.com/ajax/libs/jquery/2.1.1/jquery.min.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.5.rc1.min.js"></script>
+	
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+	
+	<!-- Style for dygraphs -->
+	<style type="text/css">
+		#chart{
+			left: 50px;
+			right: 150px;
+			height: 400px
+		}
+		.dygraph-legend{
+			right: 70px !important;
+			background-color: transparent !important;
+		}
+	</style>
+
+	<script type="text/javascript">
+		function submitForm(form, url, cFunction, id){
+			var xhttp;
+			xhttp = new XMLHttpRequest();
+			xhttp.open("POST", url, true);
+			xhttp.onreadystatechange = function(){
+				if(this.readyState == 4 && this.status ==200 ){
+					cFunction(xhttp, id);
+				}
+			};
+			var postQuery = document.forms.explainqueryform.querytext.value;
+			xhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+			xhttp.send("querytext="+encodeURIComponent(postQuery));
+		}
+	</script>
+
+	<script type="text/javascript">
+		$(function(){
+			var pstyle = 'border: 1px solid #dfdfdf; padding: 5px;';
+			$('#navid').w2layout(globalnavconfig.layout);
+			w2ui['globalnavlayout'].load('top', 'Navbar.html');
+			w2ui['globalnavlayout'].show('top', 'Navbar.html');
+			w2ui['globalnavlayout'].content('css', '.class1 {color: black}');
+		});
+	</script>
+
+</head>
+<body>
+	<div id="navid" style="width: 100%; height : 50px;"> </div>
+	<div style="padding: 1px;"></div>
+	<br>
+
+	<form name="explainqueryform" onsubmit="submitForm(this, 'http://localhost:3001/explainPlan', showResults, 'explainplanid')" target="uploader_iframe">
+		<textarea id="querytextid" name="querytext" palceholder="Query to be analyzed here" rows="3" cols="80"></textarea><br><br>
+		<textarea id="explainplanid" name="queryresult" palceholder="ExplainPlan results here" rows="30" cols="80"></textarea><br>
+
+		<input type="submit" name="submit" value="submit">
+	</form>
+	<iframe id="uploader_iframe" name="uploader_iframe" style="display: none;"></iframe>
+	<br><br>
+</body>
+</html>

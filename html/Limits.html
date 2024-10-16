@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title> Org Limits </title>
+	<link rel="stylesheet" type="text/css" href="dygraph.css">
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/cc/font-awesome.min.css">
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+
+	<script type="text/javascript" src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="dygraph.js"></script>
+	<script type="text/javascript" src="smooth-plotter.js"></script>
+
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="LoginReportUtil.js"></script>
+	<script type="text/javascript" src="RequestFlowReportUtil.js"></script>
+	<script type="text/javascript" src="ApexExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="ApiReportUtil.js"></script>
+	<script type="text/javascript" src="RestApiReportUtil.js"></script>
+	<script type="text/javascript" src="URIReportUtil.js"></script>
+	<script type="text/javascript" src="VFRequestReportUtil.js"></script>
+	<script type="text/javascript" src="ApexTriggerReportUtil.js"></script>
+	<script type="text/javascript" src="QueuedExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="BulkApiReportUtil.js"></script>
+	<script type="text/javascript" src="ApexCalloutReportUtil.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+	<script type="text/javascript">
+		$(function(){
+			var pstyle = 'border: 1px solid #dfdfdf; padding: 5px;';
+			$('#navid').w2layout(globalnavconfig.layout);
+			w2ui['globalnavlayout'].load('top', 'Navbar.html');
+			w2ui['globalnavlayout'].show('top', 'Navbar.html');
+			w2ui['globalnavlayout'].content('css', '.class1 {color: black}');
+		});	
+	</script>
+</head>
+<body>
+	<div id="navid" style="width: 100%; height : 50px;"> </div>
+	<div style="padding: 1px;"></div>
+
+	<div id="orglimitsdivid" style="height : 450px;"></div>
+	
+</body>
+<script type="text/javascript">
+		
+    //End of R22 changes
+    $("#orglimitsdivid").w2grid({
+        title : 'Org Limits',
+        name : 'limitsGrid',
+        method : 'GET',
+        url : 'http://localhost:3001/getOrgLimits',
+        columns: [
+            { field : 'LimitName', caption : 'Limit Name', size: '30%'},
+            { field : 'Max', caption : 'Max', size: '30%'},
+            { field : 'Remaining', caption : 'Remaining', size: '40%'}
+        ],
+        parser : function(responseText){
+            var limitRecords = [];
+            var JSONData = '';
+            var data = $.parseJSON(responseText);
+            var recid =1;
+            object.keys(data).forEach(function(key){
+                var rec = {
+                    "LimitName" : key,
+                    "Max" : data[key].Max,
+                    "Remaining" : data[key].Remaining
+                };
+                rec.recid = recid++;
+                limitrecords.push(rec);
+            });
+            JSONData = {
+                "status" : "success",
+                "total" : limitRecords.length,
+                "records" : limitRecords
+            };
+            return JSONData;
+        },
+        show: {
+            columHeaders : true,
+            footer : true,
+            toolbarColumns : true,
+            lineNumbers : true,
+            expandColumn : false
+        },
+
+    });	
+</script>
+</html>

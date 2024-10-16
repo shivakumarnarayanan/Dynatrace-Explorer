@@ -1,0 +1,999 @@
+//SFConnect.js
+const express = require('express');
+const bodyParser = require('body-parser');
+
+var http = require ('http');
+var jsforce = require ('jsforce');
+var fs = require ('fs');
+
+var helpers = require ('./helpers1');
+var dbutils = require ('./dbhelper1');
+var toolinghelper = require ('./toolinghelper1');
+var streaminghelper = require ('./streaminghelper1');
+
+var app = express();
+const router = express.Router();
+app.use(bodyParser.urlencoded({extended : true}));
+
+//parse application/json
+app.use(bodyParser.json());
+
+app.set('port', process.env.PORT||3001);
+app.use(express.static('html'));
+app.timeout = 600000;
+
+//---SF Connection ---
+var conn ;
+var username;
+var password;
+var userInfo;
+var day = 'Last_n_Days:3';
+var compress = 'n';
+var totalSize = 0;
+var fileList = [];
+
+var clientId = '';
+var clientSecret = '';
+
+//-------Test SF Connection -----
+app.get('/data',function(req, res){
+	console.log('SF Connection Successful !!');
+	fs.readFile('',function(err, html){
+		if(err){
+			throw err;
+		}
+		res.writeHeader(200,{"Content-Type":"text/html"});
+		res.write(html);
+		res.end();
+	});
+});
+
+//-------Test SF Connection -----
+app.get('/',function(req, res){
+	console.log('SF Connection Successful !!');
+	res.redirect(200, './html/index.html');
+});
+
+
+//------Download Event Log Files----
+app.get('/download_sf_logs',function(req, res){
+	//console.log('in download sf logs');
+	var fromDate = '2020-12-21T23:59:59Z';
+	var toDate = '2020-12-23T00:00:00Z';
+	
+	var url = conn.instanceUrl+'/services/data/v44.0/query?q=SELECT+ID+,+EventType+,Logdate+From+EventLogFile+where+LogDate+>+'
+	+ fromDate 
+	+ '+and+LogDate+<+'
+	+ toDate;
+
+	var headers = {
+		'Authorization' : 'Bearer '+conn.accessToken,
+		'Content-Type' : 'application/json',
+		'client_id' : clientId,
+		'Connection': 'keep-alive'
+	};
+	console.log('Initiating request...');
+	toolinghelper.getApexJobList(req, res, conn, 'Events', fromDate, toDate, function(noOfJobs, jobList){
+		console.log('No of Jobs in Main '+noOfJobs);
+	});
+	helpers.listFiles(req, res, headers, conn, url, compress);
+	res.end();
+});
+
+//------Load DB ----
+app.get('/loadDB',function(req, res){
+	//console.log('Loading DB...');
+	dbutils.readFilesFromLogDir("./elf");
+	res.send('Mongo DB load in progress...');
+	res.end();
+});
+
+
+//---- Query Login Events ----
+app.get('/findLoginEvents',function(req, res){
+	//console.log('in findLoginEvents ...');
+	var criteria = ([
+		{$match : {"EVENT_TYPE" : "Login"}},
+		{
+			$group: {
+				_id : {$substr :["($TIMESTAMP)",0,14]},
+				total :{$sum : 1}
+			}
+		}
+	]);
+	dbutils.findLoginEvents("Events", criteria, res);
+});
+
+
+//---- Query REST API Events ----
+app.get('/findRestApiEvents',function(req, res){
+	//console.log('in findRestApiEvents ...');
+	/*
+	var criteria = ([
+		{$match : {"EVENT_TYPE" : "RestApi"}},
+		{$orderby :{"TIMESTAMP" :1}},
+		
+	]);
+	*/
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "RestApi",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findRestApiEvents("Events", criteria, res);
+});
+
+//---- Top RESTAPI Events ----
+app.get('/findTopRESTAPIs',function(req, res){
+	const fromDate  = (new Date(req.query.fromdate)).toISOString();
+	const toDate  = (new Date(req.query.todate)).toISOString();
+	const eventType = req.query.eventtype;
+
+	console.log('From Date --> '+fromDate+' \nTo Date -->' + toDate);
+
+	var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"TIMESTAMP_DERIVED" : {
+					"$gte" : fromDate,
+					"$lte" : toDate
+				}
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"Timestamp" :{"substr" : ["TIMESTAMP",0,12]},
+					"EntityName" : "$ENTITY_NAME",
+					"Request" : "$URI",
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+//---- Drill down on RESTAPIs Events ----
+app.get('/drilldownTopRESTAPIs',function(req, res){
+	const entityName = req.query.entityname;
+	const uri = req.query.request;
+	const eventType = req.query.eventtype;
+
+	console.log('entityName --> '+entityName+'\nuri --> '+uri+' \neventType -->' + eventType);
+
+		var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"ENTITY_NAME" : entityName,
+				"URI" : uri
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"substr" : ["TIMESTAMP",0,12]
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+
+//---- Query API Events ----
+app.get('/findApiEvents',function(req, res){
+	//console.log('in findApiEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "API",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findApiEvents("Events", criteria, res);
+});
+
+//---- Top API Events ----
+app.get('/findTopAPIs',function(req, res){
+	const fromDate  = (new Date(req.query.fromdate)).toISOString();
+	const toDate  = (new Date(req.query.todate)).toISOString();
+	const eventType = req.query.eventtype;
+
+	console.log('From Date --> '+fromDate+' \nTo Date -->' + toDate);
+
+	var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"TIMESTAMP_DERIVED" : {
+					"$gte" : fromDate,
+					"$lte" : toDate
+				}
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"Timestamp" :{"substr" : ["TIMESTAMP",0,12]},
+					"EntityName" : "$ENTITY_NAME",
+					"MethodName" : "$METHOD_NAME",
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+//---- Drill down on API Events ----
+app.get('/drilldownTopAPIs',function(req, res){
+	const entityName = req.query.entityname;
+	const methodName = req.query.methodname;
+	const eventType = req.query.eventtype;
+
+	console.log('entityName --> '+entityName+'\nmethodName --> '+nmethodName+' \neventType -->' + eventType);
+
+		var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"ENTITY_NAME" : entityName,
+				"METHOD_NAME" : methodName
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"substr" : ["TIMESTAMP",0,12]
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+
+//---- Query Apex Execution Events ----
+app.get('/findApexExecutionEvents',function(req, res){
+	//console.log('in findApexExecutionEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "ApexExecution",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findApexExecutionEvents("Events", criteria, res);
+});
+
+//---- Top Apex Execution Events ----
+app.get('/findTopApexExecutions',function(req, res){
+	const fromDate  = (new Date(req.query.fromdate)).toISOString();
+	const toDate  = (new Date(req.query.todate)).toISOString();
+	const eventType = req.query.eventtype;
+	console.log('From Date --> '+fromDate+' \nTo Date -->' + toDate);
+
+	var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"IS_LONG_RUNNING_REQUEST" : {"$eq" : "1"},
+				"TIMESTAMP_DERIVED" : {
+					"$gte" : fromDate,
+					"$lte" : toDate
+				}
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"Timestamp" :{"substr" : ["TIMESTAMP",0,12]},
+					"EntryPoint" : "$ENTRY_POINT",
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxCallouttime" : {"$max" : "$CALLOUT_TIME" },
+				"AvgCallouttime" : {"$avg" : "$CALLOUT_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+//---- Drill down on Apex Execution Events ----
+app.get('/drilldownTopApexExecutions',function(req, res){
+	const entryPoint = req.query.entrypoint;
+	const eventType = req.query.eventtype;
+
+	console.log('entryPoint --> '+entryPoint+' \neventType -->' + eventType);
+
+		var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"ENTRY_POINT" : entryPoint
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"substr" : ["TIMESTAMP",0,12]
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+//---- Query VFRequest Events ----
+app.get('/findVFRequestEvents',function(req, res){
+	console.log('in findVFRequestEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "VisualforceRequest",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findVFRequestEvents("Events", criteria, res);
+});
+
+//---- Top VF Page Events ----
+app.get('/findTopVFPages',function(req, res){
+	const fromDate  = (new Date(req.query.fromdate)).toISOString();
+	const toDate  = (new Date(req.query.todate)).toISOString();
+	const eventType = req.query.eventtype;
+
+	console.log('From Date --> '+fromDate+' \nTo Date -->' + toDate);
+
+	var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"IS_LONG_RUNNING_REQUEST" : {"$eq" : "1"},
+				"TIMESTAMP_DERIVED" : {
+					"$gte" : fromDate,
+					"$lte" : toDate
+				}
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"Timestamp" :{"substr" : ["TIMESTAMP",0,12]},
+					"PageName" : "$PAGE_NAME",
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+//---- Drill down on VF Events ----
+app.get('/drilldownTopVFPages',function(req, res){
+	const pageName = req.query.pagename;
+	const eventType = req.query.eventtype;
+
+	console.log('pageName --> '+pageName+' \neventType -->' + eventType);
+
+		var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"PAGE_NAME" : pageName
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"substr" : ["TIMESTAMP",0,12]
+				},
+				"MaxRuntime" : {"$max" : "$RUN_TIME" },
+				"AvgRuntime" : {"$avg" : "$RUN_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {"MaxRunTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+//---- Query URI Events ----
+app.get('/findURIEvents',function(req, res){
+	//console.log('in findURIEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "URI",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findURIEvents("Events", criteria, res);
+});
+
+//---- Query Requests ----
+app.get('/findEvents/',function(req, res){
+	var eventRequestId = req.query.requestid;
+	//console.log('requestid: '+ req.query.requestid);
+	var criteria = ([
+		{"REQUEST_ID" : eventRequestId}
+	]);
+	dbutils.findEvents("Events", criteria, eventRequestId, res);
+});
+
+//---- Query Jobs ----
+app.get('/findEventsUsingJobID/',function(req, res){
+	var eventJobId = req.query.jobid;
+	var eventRequestId = req.query.requestid;
+	
+	//console.log('jobid: '+ req.query.jobid+' || requestid: '+ req.query.requestid);
+
+	var criteria = '';
+	if(eventREquestId == '' || eventRequestId == null)
+	{
+		console.log('scenario 1');
+		criteria = (
+			{"JOB_ID" : eventJobId}
+		);
+	} else {
+		console.log('Scenario 2');
+		criteria = (
+			{
+				$or :[
+					{ "JOB_ID" : eventJobId },
+					{ "REQUEST_ID" : eventRequestId }
+				]
+			}
+		);
+	} 
+	
+	dbutils.findEventsUsingJobID("Events", criteria, eventJobId, res);
+});
+
+//---- Query ApexTrigger Events ----
+app.get('/findApexTriggerEvents',function(req, res){
+	//console.log('in findApexTriggerEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "ApexTrigger",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findApexTriggerEvents("Events", criteria, res);
+});
+
+//---- Top Trigger Events ----
+app.get('/findTopTriggers',function(req, res){
+	const fromDate  = (new Date(req.query.fromdate)).toISOString();
+	const toDate  = (new Date(req.query.todate)).toISOString();
+	const eventType = req.query.eventtype;
+
+	console.log('From Date --> '+fromDate+' \nTo Date -->' + toDate);
+
+	var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"TIMESTAMP_DERIVED" : {
+					"$gte" : fromDate,
+					"$lte" : toDate
+				}
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"Timestamp" :{"substr" : ["TIMESTAMP",0,12]},
+					"EntityName" : "$ENTITY_NAME",
+					"TriggerName" : "$TRIGGER_NAME",
+				},
+				"MaxExectime" : {"$max" : "$EXEC_TIME" },
+				"AvgExectime" : {"$avg" : "$EXEC_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		}//,
+		//{ $sort : {"MaxExecTime" : -1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+//---- Drill down on Trigger Events ----
+app.get('/drilldownTopTriggers',function(req, res){
+	const entityName = req.query.entityname;
+	const triggerName = req.query.triggername;
+	const eventType = req.query.eventtype;
+
+	console.log('entityName --> '+entityName+'\nuri --> '+uri+' \neventType -->' + eventType);
+
+		var criteria = ([
+		{
+			$match : {
+				"EVENT_TYPE" : eventType,
+				"ENTITY_NAME" : entityName,
+				"TRIGGER_NAME" : triggerName
+			}
+		},
+		{
+			$group : {
+				_id: {
+					"substr" : ["TIMESTAMP",0,12]
+				},
+				"MaxExectime" : {"$max" : "$EXEC_TIME" },
+				"AvgExectime" : {"$avg" : "$EXEC_TIME" },
+				"MaxCPUtime" : {"$max" : "$CPU_TIME" },
+				"AvgCPUtime" : {"$avg" : "$CPU_TIME" },
+				"MaxDBtime" : {"$max" : "$DB_TOTAL_TIME" },
+				"AvgDBtime" : {"$avg" : "$DB_TOTAL_TIME" },
+				"total" : {"$sum" : 1 }
+			}
+		},
+		{ $sort : {_id : 1 }}
+	]);
+	dbutils.findTopEvents("Events",criteria, res);
+});
+
+
+//---- Query QueuedExecution Events ----
+app.get('/findQueuedExecutionEvents',function(req, res){
+	//console.log('in findQueuedExecutionEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "QueuedExecution",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findQueuedExecutionEvents("Events", criteria, res);
+});
+
+//---- Query Apex Jobs ----
+app.get('/findApexExceptionEvents/',function(req, res){
+	var jobId = req.query.jobid;
+	
+	console.log('jobid: '+ req.query.jobid);
+
+	var criteria = (
+		{
+			$or :[
+				{"Id" : {$regex : jobId} },
+				{"ParentJobId" : {$regex : jobId }}
+			]	
+		}
+	);
+	
+	dbutils.findApexJobs("Events", criteria, res);
+});
+
+//---- Query Failed Apex Jobs ----
+app.get('/findFailedApexJobs',function(req, res){
+	//console.log('in findBulkApiEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"JobType" : {$in : ["BatchApex","BatchApexWorker","Future","ApexToken"] },
+			"NumberOfErrors" : {$nin : [0] },
+			"CreatedDate" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findApexJobs("Events", criteria, res);
+});
+
+//---- Query BulkApi Events ----
+app.get('/findBulkApiEvents',function(req, res){
+	//console.log('in findBulkApiEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "BulkApi",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findBulkApiEvents("Events", criteria, res);
+});
+
+//---- Query BulkApi Failure Events ----
+app.get('/findBulkAPIFailuresByJobID',function(req, res){
+	//console.log('in findBulkApiEvents ...');
+	var jobId = req.query.jobid;
+	tolinghelper.gerBulkAPIFailuresByJobID(req, res, conn, jobId);
+});
+
+//---- Query ApexUnexpected Exception Events ----
+app.get('/findEApexExceptionEvents/',function(req, res){
+	var eventJobId = req.query.jobid;
+	var eventRequestId = req.query.requestid;
+	
+	//console.log('jobid: '+ req.query.jobid+' || requestid: '+ req.query.requestid);
+
+	var criteria = '';
+	if(eventREquestId == '' || eventRequestId == null)
+	{
+		console.log('scenario 1');
+		criteria = (
+			{
+				"EVENT_TYPE" : "ApexUnexpectedException",
+				"EXCEPTION_MESSAGE" : {$regex : eventJobId }
+			}
+		);
+	} else {
+		console.log('Scenario 2');
+		criteria = (
+			{
+				"EVENT_TYPE" : "ApexUnexpectedException",
+				$or :[
+					{ "EXCEPTION_MESSAGE" : {$regex : eventJobId} },
+					{ "REQUEST_ID" : eventRequestId }
+				]
+			}
+		);
+	} 
+	
+	dbutils.findApexExceptionEvents("Events", criteria, res);
+});
+
+//---- Query ApexCallout Events ----
+app.get('/findApexCalloutEvents',function(req, res){
+	//console.log('in findApexCalloutEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "ApexCallout",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findApexCalloutEvents("Events", criteria, res);
+});
+
+//---- Query PlatformEncryption Events ----
+app.get('/findPlatformEncryptionEvents',function(req, res){
+	//console.log('in findPlatformEncryptionEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "PlatformEncryption",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	dbutils.findPlatformEncryptionEvents("Events", criteria, res);
+});
+
+//---- Query BatchApexErrorEvents ----
+app.get('/findBatchApexErrorEvents',function(req, res){
+	//console.log('in findBatchApexErrorEvents ...');
+	const fromDate = new Date(req.query.fromdate);
+	const toDate = new Date(req.query.todate);
+	console.log('From Date->'+ fromDate + 'To Date ->'+toDate)
+	var criteria = (
+		{
+			"EVENT_TYPE" : "BatchApexErrorEvents",
+			"TIMESTAMP_DERIVED" : {
+				$gte: fromDate.toISOString(),
+				$lte: toDate.toISOString()
+			}
+		}
+	);
+	streaminghelper.getBatchApexErrors(req, res, conn, function(eventMessages){
+		console.log('In main batch apex error event--> '+ eventMessages);
+	});
+});
+
+//---- Query Plan ----
+app.post('/explainPlan',function(req, res){
+	//console.log('in explain query plan ...');
+	const postBody = req.body;
+	console.log('req.body.querytext-->', req.body['querytext']);
+	toolinghelper.explainPlan(req, res, conn);
+});
+
+//---- Apex Snippet Perf - Debug ----
+app.post('/apexPerf',function(req, res){
+	//console.log('in apex perf - debugging...');
+	const postBody = req.body['apextext'];
+	console.log('req.body.apextext-->', req.body['apextext']);
+	toolinghelper.apexPerf(req, res, conn, req.body['apextext'], userInfo);
+});
+
+//---- Query Plan ----
+app.post('/getSObjects',function(req, res){
+	console.log('fetching SObjects ...');
+	const postBody = req.body['sobjecttype'];
+	console.log('req.body.sobjecttype-->', req.body['sobjecttype']);
+	toolinghelper.getSObjects(req, res, conn, postBody);
+});
+
+//---- fetch SOBjects Details Perf  ----
+app.get('/getSObjectDetails',function(req, res){
+	//console.log('in SOBjects Details Perf ...');
+	var id = req.query.id;
+	var type = req.query.type;
+	console.log('id-->'+ id+'\ntype-->'+type);
+	toolinghelper.getSObjectDetails(req, res, conn, id, type);
+});
+
+//---- Get SymbolTable ----
+app.get('/getSymbolTable',function(req, res){
+	//console.log('in getSymbolTable ...');
+	var objId = req.query.objId;
+	var objType = req.query.objType;
+	console.log('id-->'+ objId+'\ntype-->'+objType);
+	if(objId == null || objId == undefined)
+		objId = '';
+	if(objType == null || objType == undefined)
+		objType = 'ApexClass';
+
+	toolinghelper.getSymbolTable(req, res, conn, objId, objType, function(cResp){
+		console.log('SymbolTable response in Main-->'+JSON.stringify(cResp));
+		res.send(JSON.stringify(cResp));
+	});
+	//res.end();
+});
+
+//---- Set Checkpoint ----
+app.get('/setCheckpoint/',function(req, res){
+	//console.log('in setCheckpoint ...');
+	var id = req.query.id;
+	var lineNo = req.query.lineNo;
+	console.log('id-->'+ id+'\ntype-->'+lineNo);
+
+	toolinghelper.setCheckpoint(req, res, conn, id, null, null, lineNo, function(cResp){
+		console.log('Creating Checkpoint -->'+JSON.stringify(cResp));
+		
+	});
+	res.end();
+});
+
+//---- Delete Checkpoint ----
+app.get('/deleteCheckpoint/',function(req, res){
+	//console.log('in deleteCheckpoint ...');
+	var id = req.query.id;
+	var lineNo = req.query.lineNo;
+	console.log('id-->'+ id+'\ntype-->'+lineNo);
+
+	toolinghelper.deleteCheckpoint(req, res, conn, id, lineNo, function(cResp){
+		console.log('Deleting Checkpoint -->'+JSON.stringify(cResp));
+		
+	});
+	res.end();
+});
+
+//---- get all the Checkpoints whileloading the SObject ----
+app.get('/getCheckpoints/',function(req, res){
+	//console.log('in get all the Checkpoints ...');
+	var id = req.query.id;
+	console.log('getCheckpoints id-->'+ id);
+
+	toolinghelper.getCheckpoints(req, res, conn, id, function(cResp){
+		console.log('Getting all Checkpoints -->'+JSON.stringify(cResp));
+		
+	});
+	//res.end();
+});
+
+//---- get the ApexExecutionOverlayResults ----
+app.get('/getApexExecutionOverlayResults/',function(req, res){
+	//console.log('in get all the Checkpoints ...');
+	var id = req.query.id;
+	if(id != null || id != undefined){
+		console.log('getApexExecutionOverlayResults id-->'+ id);
+		toolinghelper.getApexExecutionOverlayResults(req, res, conn, id, function(cResp){
+			console.log('Getting all ApexExecutionOverlayResults for logged in user -->'+JSON.stringify(cResp));
+			res.send(JSON.stringify(cResp));
+		});
+	}
+	else {
+		console.log('getApexExecutionOverlayResults id is null');
+		toolinghelper.getApexExecutionOverlayResults(req, res, conn, userInfo.id, function(cResp){
+			console.log('Getting all ApexExecutionOverlayResults for logged in user -->'+JSON.stringify(cResp));
+			res.send(JSON.stringify(cResp));
+		});
+	}
+	//res.end();
+});
+
+//---- get the HeapDumpDetails ----
+app.get('/getHeapDumpDetails/',function(req, res){
+	//console.log('in get all the Checkpoints ...');
+	var id = req.query.id;
+	if(id != null || id != undefined){
+		console.log('getHeapDumpDetails for aeorid -->'+ id);	
+	}
+	else {
+		console.log('getApexExecutionOverlayResults id is null');
+		id = ''; //hardcoded
+	}
+	toolinghelper.getApexExecutionOverlayResultsById(req, res, conn, id, function(cResp){
+		console.log('Getting all HeapDumpDetails for id -->'+id+' -->'+JSON.stringify(cResp));
+		res.send(JSON.stringify(cResp));
+	});
+	//res.end();
+});
+
+// ----- Downnload Debug Log Files -----
+app.get('/download_debug_logs',function(req, res){
+	//console.log('in download sf logs');
+	
+	var headers = {
+		'Authorization' : 'Bearer '+conn.accessToken,
+		'Content-Type' : 'application/json',
+		'client_id' : clientId,
+		'client_secret' : clientSecret,
+		'Connection': 'keep-alive'
+	};
+	var query = "SELECT ID, LOGUSERIDLOGLENGTH, LASTMODIFIEDDATE, REQUEST, OPERATION, "
+		+"APPLICATION, STATUSDURATIONMILLISECONDS,SYSTEMMODSTAMP, STARTTIME, LOCATION "
+		+"FROM APEXLOG "
+		+"WHERE REQUEST = 'Api' "
+		+"ORDERBY STARTTIME DESC "
+		;
+	var url = conn.instanceUrl+'/services/data/v45.0/query?q='+encodeURIComponent(query);
+	var fileList;
+
+	fileList = toolinghelper.listFiles(req, res, headers, conn, url, compress)
+	//res.end();
+});
+
+//-----Node Server Startup ------
+http.createServer(app).listen(app.get('port'), function(){
+	console.log('Express Server Listening on Port '+app.get('port'));
+	conn = new jsforce.Connection({
+		accessToken	: '{!$Api.Session_ID}',
+		//can change login url to connect to any sandbox
+		loginUrl	: '',
+		instanceUrl : '',
+		version : "49.0",
+		client_id 	: clientId,
+		client_secret: clientSecret
+	});
+	console.log('After JSForce Connection');
+	conn.bulk.pollInterval = 5000; //5 sec
+	conn.bulk.pollTimeout = 1200000 // 2 mins
+
+	if (username == null){
+		username = '';
+		password = '';
+	}	
+	
+	conn.login(username, password+"hgLcD9uzuUeBFjjyMHfgEEZX", function(err, userDetails){
+		console.log('In Login  : '+username);
+		console.log('In Login  : '+password);
+		if(err) { 
+			console.log("--------ERR---------");
+			return console.error(err);
+		}
+		
+		console.log(conn.accessToken);
+		console.log(conn.instanceUrl);
+
+		//logged in user details
+		console.log('User Id : '+userDetails.id);
+		console.log('Org Id : '+ userDetails.organizationId);
+
+		userInfo = userDetails;
+	});
+	//make directory for storing event logs
+	console.log(conn.accessToken);
+	console.log(conn.instanceUrl);
+	helpers.makeDirectory('elf', fs);
+});
+

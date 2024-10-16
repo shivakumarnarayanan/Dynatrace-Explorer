@@ -1,0 +1,101 @@
+//GlobalUtils.js
+globalvars = {
+	fromDate : '',
+	toDate : '',
+	eventType : ''
+};
+
+var globalnavconfig = {
+	layout: {
+		name	: 'globalnavlayout',
+		panels	:[
+			{ type: 'top', style: 'border: 1px solid #FFFFFF; padding: 1px;', resizable: true },
+		]
+	}
+};
+var globalcontentlayoutconfig = {
+	layout: {
+		name	: 'globalcontentlayout',
+		padding	: 1,
+		panels	:[
+			{ type: 'left', size: '45%', minSize: 320, resizable: true },
+			{ type: 'main', minSize: 320 },
+		]
+	}
+};
+var requestflowconfig = {
+	layout: {
+		name	: 'requestflowlayout',
+		padding	: 4,
+		panels	:[
+			{ type: 'main', minSize: 350, resizable: true },
+		]
+	}
+};
+
+var drilldowncontentlayoutconfig = {
+	layout: {
+		name : 'drilldowncontentlayout',
+		padding :1,
+		panels : [
+			{ type: 'main', minSize : 320 }
+		]
+	}
+};
+
+//Export to Excel - Export entire dataset csv file
+function exportData(filename, csvString){
+	var blob = new Blob([csvString]);
+	if(window.navigator.msSaveOrOpenBlob)
+		window.navigator.msSaveOrOpenBlob(blob, filename+"_Metrics.csv");
+	else
+	{
+		var a = window.document.createElement("a");
+		a.href= window.URL.createObjectURL(blob, {type: "text/plain"} );
+		a.download = filename+"_Metrics.csv";
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+	}
+}
+
+//Convert CSV file to JSON. Currently used in APexPerf.html
+function csvJSON(csv, delimiter) {
+	var lines = csv.split("\n");
+	var result = [];
+	var headers = lines[0].split(delimiter);
+	for (var i = 1; i < lines.length; i++) {
+		var obj = {};
+		var currentLine = lines[i].split(delimiter);
+		for (var j = 0; j<headers.length; j++) {
+			if(j == 0 && headers[j] == "recid" ){
+				obj[headers[j]] = Number(currentLine[j]);
+			}
+			else{
+				obj[headers[j]] = w2utils.encodeTags(currentLine[j]);
+			}	
+		}
+		result.push(obj);
+	}	
+	var responseJSON = {
+		"status"	: "success",
+		"total"		: result.length,
+		"records"	: result
+	};
+	return responseJSON;
+}
+
+// USed for overlaying multiple line graphs 
+function showHideGraphSeries(labelStr) {
+	var html = "<b>Show/Hide Series:</b>";
+	html = html+'<label for="'+-1+'">'+''+'</label>';
+	for (var i =0; i <labelStr.length; i++) {
+		html = html+"<input type='checkbox' id='"+i+"' onClick=\"change(this)\">";
+		html = html+'<label for="'+i+'">'+labelStr[i]+'</label>';
+	}
+	document.getElementById("seriesid").innerHTML = "<p>"+html+"</p>";
+}
+
+function change(elementId) {
+	g.setVisibility(parseInt(elementId.id), elementId.checked);
+}

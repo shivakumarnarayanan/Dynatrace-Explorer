@@ -1,0 +1,123 @@
+//ResponseRouter.js
+function loadDoc( url, cFunction, id, method){
+
+	var xhttp;
+	resetActive();
+
+	if(id !== null && document.getElementById(id) && !id.startsWith('requestreport')){
+		document.getElementById(id).className = "active";
+	}
+	//alert(21);
+	xhttp = new XMLHttpRequest();
+	//xhttp.open("POST", url, true);
+	//alert(22);
+	xhttp.onreadystatechange = function(){
+		if(this.readyState == 4 && this.status == 200 && cFunction != undefined ){
+			
+			//alert(23);
+			cFunction(this, id);
+		}
+	};
+
+	if(method != null && method == 'POST'){
+		//alert(24);
+		xhttp.open("POST", url, true);
+		xhttp.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+		//alert(5);
+	}
+	else{
+		//alert(26);
+		xhttp.open("GET", url, true);	
+		//alert(27);
+	}
+	//alert(28);
+	xhttp.send();
+	//alert(29);
+}
+
+function showResults(xhttp, id){
+	//alert(31+''+id);
+	switch(id){
+		case "loginreport":
+			g = new Dygraph(document.getElementById("contentsid"), getLoginReportData(xhttp.responseText), getLoginReportOptions());
+			break;
+		case "apexexecutionreport":
+			g = new Dygraph(document.getElementById("contentsid"), getApexExecutionReportData(xhttp.responseText), getApexExecutionReportOptions());
+			break;
+		case "restapireport":
+			g = new Dygraph(document.getElementById("contentsid"), getRestApiReportData(xhttp.responseText), getRestApiReportOptions());
+			break;
+		case "apireport":
+			g = new Dygraph(document.getElementById("contentsid"), getApiReportData(xhttp.responseText), getApiReportOptions());
+			break;
+		case "vfrequestreport":
+			//alert(32);
+			g = new Dygraph(document.getElementById("contentsid"), getVFRequestReportData(xhttp.responseText), getVFRequestReportOptions());
+			//alert(33);
+			break;
+		case "requestreport":
+			getFlowOfEventsData(xhttp.responseText);
+			break;
+		case "urireport":
+			g = new Dygraph(document.getElementById("contentsid"), getURIReportData(xhttp.responseText), getURIReportOptions());
+			break;
+		case "apextriggerreport":
+			g = new Dygraph(document.getElementById("contentsid"), getApexTriggerReportData(xhttp.responseText), getApexTriggerReportOptions());
+			break;
+		case "apexexecutioncountid":
+			getApexVisitsData(xhttp.responseText);
+			break;
+		case "queuedexecutionreport":
+			g = new Dygraph(document.getElementById("contentsid"), getQueuedExecutionReportData(xhttp.responseText), getQueuedExecutionReportOptions());
+			break;
+		case "bulkapireport":
+			g = new Dygraph(document.getElementById("contentsid"), getBulkApiReportData(xhttp.responseText), getBulkApiReportOptions());
+			break;
+		case "apexcalloutreport":
+			g = new Dygraph(document.getElementById("contentsid"), getApexCalloutReportData(xhttp.responseText), getApexCalloutReportOptions());
+			break;
+		case "explainplanid":
+			var obj = JSON.parse(xhttp.responseText);
+			var str = JSON.stringify(obj, undefined, 4);
+			document.getElementById("explainplanid").value = str;
+			obj = '';
+			str = ''
+			break;
+		case "apexresultid":
+			document.getElementById("apexresultid").value = xhttp.responseText;
+			getDebugData(xhttp.responseText);
+			break;
+		case "sobjectresultsid":
+			getSObjectsData(xhttp.responseText);
+			break;
+		case "sobjectdetailsid":
+			displayObjectBody(xhttp.responseText);
+			break;
+		case "getcheckpointsid":
+			var resp = xhttp.responseText;
+			setCheckPoints(resp);
+			resp = null;
+			break;
+		case "heapdumpdetailsid":
+			populateHeapDump(xhttp.responseText);
+			break;
+		case "heapdumpreportid":
+			getHeapDumpReportData(xhttp.responseText);
+			break;
+		case "trendchart" :
+			g = new Dygraph(document.getElementById("trendchartid"), 
+				getTrendChartData(xhttp.responseText), 
+				getTrendChartOptions());
+			break;
+		default:
+			document.getElementById("contentsid").innerHTML = xhttp.responseText;
+			break;
+	}
+	xhttp = '';
+}
+
+function resetActive(){
+	if($("#navbarid a")){
+		$("#navbarid a").addClass('inactive');
+	}
+}

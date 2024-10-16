@@ -1,0 +1,311 @@
+//HeapDumpreportUtil.js
+var cntr = 1;
+var jsonRes = [];
+function getHeapDumpReportData(heapdumpJSONStr){
+	var heapdumpJSON = JSON.parse(heapdumpJSONStr);
+	heapdumpJSONStr = '';
+	
+	var dataStr = "Id, ClassName, ActionScript, ActionScriptType. Iteration, Line, UserId, CreatedDate, LastModifiedDate\n";
+	displayHeapDumpReportRawData(heapdumpJSON['records']);
+	heapdumpJSON = '';
+	return dataStr;
+}
+
+function displayHeapDumpReportRawData(JSONData){
+	var recid  =1;
+	$(JSONData).each(function(i,rec){
+		rec.recid = recid++;
+	});
+	if(w2ui['grid2'])
+		w2ui['grid2'].destroy();
+	if(w2ui['heapdumpJSON'])
+		w2ui['heapdumpGrid'].destroy();
+	if(w2ui['heapdumplayout'])
+		w2ui['heapdumplayout'].destroy();
+
+	var contentconfig = {
+		layout : {
+			name 	: 'heapdumplayout',
+			padding : 4,
+			panels 	: [
+				{ type: 'left', size: '50%', minSize: 275, resizable: true },
+				{ type: 'main', minSize: 275, resizable: true},
+			]
+		},
+		grid :{
+			name 	: 'heapdumpGrid',
+			header 	: '<B>Heapdump Report</B>',
+			method 	: 'GET',
+			url 	: 'http://localhost:3001/getApexExecutionOverlayResults',
+			multiSelect: false,
+			toolbar : {
+				items : [
+					{ type: 'break' },
+					{ type: 'button', id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+				],
+				onClick : function(event) {
+					switch(event.item.id){
+						case "exportdata":
+							var csv = w2ui['heapdumpGrid'].records;
+							var dataStr = "Id, ClassName, ActionScriptType, Line, UserId, LastModifiedDate\n";
+							
+							event.onComplete = function (){
+								for(var i =0;i<csv.length; i++){
+									var csvrec = csv[i];
+
+									dataStr = dataStr 
+										+ csvrec.Id + ', '
+										+ csvrec.ClassName + ', '
+										+ csvrec.ActionScriptType + ', '
+										+ csvrec.Line + ', '
+										+ csvrec.UserId + ', '
+										+ csvrec.LastModifiedDate + '\n';
+									csvrec = "";		
+								}
+								exportData('HeapDump', dataStr);
+							}
+							csv = "";
+							break;
+						default:
+							break;
+					}
+				}
+			},
+
+			show : {
+				toolbar	: true, 
+				footer	: true,
+				header 	: true,
+				toolbarSearch	: true,
+				toolbarColumns	: true,
+				lineNumbers		: true,
+				selectColumn	: true,
+				expandColumn	: false
+			},
+
+			columns : [
+				{ field: 'Id', caption: 'Id', size: '30%' },
+				{ field: 'ClassName', caption: 'ClassName', size: '30%' },
+				{ field: 'ActionScriptType', caption: 'ActionScriptType', size: '30%' },
+				{ field: 'Line', caption: 'Line', size: '30%' },
+				{ field: 'UserId', caption: 'UserId', size: '30%' },
+				{ field: 'LastModifiedDate', caption: 'LastModifiedDate', size: '30%' },
+			],
+
+			records	: JSONData,
+			
+			onClick : function(event) {
+				cntr = 1 ;
+				jsonRes =[];
+				w2ui['grid2'].clear();
+				var grid = this;
+
+				event.onComplete = function(){
+					var sel = grid.getSelection();
+					var record = this.get(event.recid);
+					loadDoc("http://localhost:3001/getHeapDumpDetails/?id="+record.Id, showResults, 'heapdumpdetailsid');
+				};
+			}
+		}
+	};
+	w2popup.open({
+		title : 'Popup',
+		width : 900,
+		height: 340,
+		showMax : true,
+		modal : true,
+		body : '<div id="layoutgridid" style="position: absolute; left: 5px; top: 5px; right: 5px; bottom: 5px"></div>',
+		onOpen : function(){
+			event.onComplete = function(){
+				$('#w2ui-popup #layoutgridid').w2layuot(contentconfig.layout);
+				w2ui['heapdumplayout'].content();
+				w2ui['heapdumplayout'].content();
+				$('#contentsid').w2grid(contentconfig.grid);
+				setTimeout(initPopupGrid(),5);
+				$('#rawdataid').w2grid({
+					name : 'grid2',
+					header : 'Heapdump Details',
+					show : { header : true, columnHeaders : false, toolbar : true }, 
+					toolbar : {
+						items : [
+							{ type: 'break' },
+							{ type: 'button', id: 'heapdumpsummary', caption: 'Heap Dump Summary', img: 'fa fa-compress' },
+							
+							{ type: 'break' },
+							{ type: 'button', id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+						],
+					},
+					onClick : function(event){
+						switch(event.item.id){
+							case 'heapdumpsummary' :
+								var recs = w2ui['grid2'].records;
+								var heapdumpJSON = '';
+								var extentJSON = new Array();
+								var recid = 1;
+
+								if(recs != null && recs.length > 0){
+									for(var i = 0;i< recs.length; i++){
+										if(recs[i].name == "HeapDump"){
+											heapdumpJSON = recs[i].value;
+										}
+									}
+
+									if(heapdumpJSON != null && heapdumpJSON != '' ){
+										$(heapdumpJSON.extents).each(function(i, rec){
+											var temp = { 'recid': recid++, 'collectionType': w2utils.encodeTags(rec.collectionType), 'typename': w2utils.encodeTags(rec.typeName), 'count': rec.count, 'size': rec.totalSize };
+											extentJSON.push(temp);
+										});
+									}
+								}
+								w2popup.open({
+									title 	: 'Heapdump Summary',
+									width 	: 800,
+									height	: 400,
+									showMax : true,
+									body 	: '<div id="heapdumpsummarygridid" style="position: absolute; left: 5px; top: 5px; right: 5px; bottom: 5px"></div>',
+									
+									onClose	: function(event){
+										if(w2ui['heapdumpSummaryGrid']){
+											w2ui['heapdumpSummaryGrid'].clear();
+											w2ui['heapdumpSummaryGrid'].destroy();
+										}
+									},
+									
+									onOpen 	: function(event){
+										event.onComplete = function (){
+											if(w2ui['heapdumpSummaryGrid']){
+												alert('HD Summary pop-up closing : '+event.type, event);
+												w2ui['heapdumpSummaryGrid'].destroy();
+											}
+											$('#w2ui-popup #heapdumpsummarygridid').w2grid({
+												show : { header : true, columnHeaders : false, toolbar : true }, 
+												name : 'heapdumpSummaryGrid',
+												toolbar : {
+													items : [
+														{ type: 'break' },
+														{ type: 'button', id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+													],
+													onClick : function(event){
+														switch(event.item.id){
+															case "exportdata":
+																alert(extentJSON);
+																var csv = extentJSON;
+																var dataStr = "TypeName,Collection,Count,Size\n";
+																
+																event.onComplete = function (){
+																	for(var i =0;i<csv.length; i++){
+																		var csvrec = csv[i];
+
+																		dataStr = dataStr 
+																			+ csvrec.typeName + ', '
+																			+ csvrec.collectionType + ', '
+																			+ csvrec.count + ', '
+																			+ csvrec.size + '\n';
+																		csvrec = "";		
+																	}
+																	exportData('HeapDump Details', dataStr);
+																}
+																csv = "";
+																break;
+															default:
+																break;
+														}
+													}
+												},
+												columns : [
+													{ field: 'typename', caption: 'Object Type', size: '310px' },
+													{ field: 'collectionType', caption: 'Collection Type', editable: {type: 'text'}, size: '210px' },
+													{ field: 'count', caption: 'count', editable: {type: 'text'}, size: '100px', sortable: true },
+													{ field: 'size', caption: 'size', editable: {type: 'text'}, size: '100px', sortable: true},
+												], 
+												records : extentJSON,
+												show : {
+													toolbar	: true, 
+													footer	: true,
+													header 	: true,
+													toolbarSearch	: true,
+													toolbarColumns	: true,
+													lineNumbers		: true,
+													selectColumn	: true,
+													expandColumn	: false
+												}
+											});
+										};
+									}
+								});
+
+								break;
+							
+							case 'exportdata' :
+								var csv = w2ui['grid2'].records;
+								var dataStr = "Name,Value\n";
+								
+								event.onComplete = function (){
+									for(var i =0;i<csv.length; i++){
+										var csvrec = csv[i];
+
+										dataStr = dataStr 
+											+ csvrec.name + ', '
+											+ csvrec.value + '\n';
+										csvrec = "";		
+									}
+									exportData('HeapDump Details', dataStr);
+								}
+								dataStr ='';
+								csv = '';
+								break;
+							
+							default:
+								break;
+						}
+					},
+					columns : [
+						{ field: 'name', caption: 'Name', size: '100px', style: 'background-color: #efefef; border-bottom: 1px solid white; padding-right: 5px;', attr: 'align-right' },
+						{ field: 'value', caption: 'Value', size: '100%', editable: { type: 'text'} }
+					]
+				});
+			};
+		},
+		onToggle : function(){
+			event.onComplete = function(){
+				w2ui.layout.resize();
+			}
+		}
+	});
+	JSONData = '';
+}
+
+function initPopupGrid(){
+	w2ui['heapdumpGrid'].resize();
+	w2ui['heapdumpGrid'].refresh();
+	w2ui['heapdumpGrid'].reload();
+}
+
+function populateHeapDump(JSONData){
+	w2ui['grid2'].clear();
+	var hdJSON = [];
+	traverse(JSON.parse(JSONData), process);
+	// this variable jsonRes is first used in onClick and populated in process function
+	w2ui['grid2'].add(jsonRes);
+}
+
+function process(key, value, cntr){
+	if(key == '0' || key == 0)
+		return;
+	var temp = '';
+	if(typeof(value) == "object"){
+		temp = { 'recid': cntr, 'name': key, 'value': value, w2ui: { style: 'background-color : #C2F5B4' } };
+	}
+	else {
+		temp = { 'recid': cntr, 'name': key, 'value': value };
+	}
+	jsonRes.push(temp);
+}
+
+function traverse(o, func){
+	for(var i in o){
+		func.apply(this, [i, o[i], cntr++]);
+		if(o[i] !== null && typeof(o[i] == 'object'))
+			traverse(o[i], func);
+	}
+}

@@ -1,0 +1,272 @@
+<!-- Peek-A-Week.html -->
+<!DOCTYPE html>
+<html>
+<head>
+	<title> Turiya - SF Explorer</title>
+	<link rel="stylesheet" type="text/css" href="dygraph.css">	
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.1/css/all.min.css">
+	<link rel="stylesheet" type="text/css" href="https://code.jquery.com/ui/1.12.1/themes/base/jquery-ui.css">
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css">
+	<script type="text/javascript" src="dygraph.js"></script>
+	<style type="text/css">
+		#chart{
+			left: 50px;
+			right: 150px;
+			height: 400px
+		}
+		.dygraph-legend{
+			right: 70px !important;
+			background-color: transparent !important;
+		}
+	</style>
+	<script type="text/javascript" src="https://code.jquery.com/jquery-3.3.1.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+	<script type="text/javascript" src="smooth-plotter.js"></script>
+	<script type="text/javascript" src="GlobalUtils.js"></script>
+	<script type="text/javascript" src="ApexCalloutReportUtil.js"></script>
+	<script type="text/javascript" src="ApexTriggerReportUtil.js"></script>
+	<script type="text/javascript" src="ApexExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="RequestFlowReportUtil.js"></script>
+	<script type="text/javascript" src="VFRequestReportUtil.js"></script>
+	<script type="text/javascript" src="QueuedExecutionReportUtil.js"></script>
+	<script type="text/javascript" src="BulkApiReportUtil.js"></script>
+	<script type="text/javascript" src="ResponseRouter.js"></script>
+
+	<script type="text/javascript">
+		$(function(){
+			var pstyle = 'border: 1px solid #dfdfdf; padding: 5px;';
+			$('#navid').w2layout(globalnavconfig.layout);
+			w2ui['globalnavlayout'].load('top', 'Navbar.html');
+            w2ui['globalnavlayout'].show('top', 'Navbar.html');
+            w2ui['globalnavlayout'].content('css', '.class1 {color: black}');			
+		});	
+	</script>
+</head>
+<body>
+	<div id="navid" style="width: 100%; height : 35px;"> </div>
+	<div style="padding: 1px;"></div>
+
+	<div id="contentlayoutid" style="width: 100%; height : 670px;"></div>
+	<div style="padding: 1px;"></div>
+    <br>
+    <script>
+        var weeklyglanceconfig = {
+            layout : {
+                name : 'weeklyglancelayout',
+                padding : 4,
+                panels : [
+                    {type: 'left', size : '125px', resizable : true, minSize : 195 },
+                    {type: 'main',  minSize : 300 },
+                    {type: 'bottom', size : 365, resizable : true }
+                ],
+                onDestroy : function(event) {
+                    alert('Weeklyglancelayout destroy called : ');
+                    console.log('Object : '+event.target + ' is destroyed ');
+                }
+            },
+            sidebar :{
+                name : 'sidebar',
+                nodes : [
+                    {
+                        id : 'watag', text : 'Week At A Glance', group : true,  expanded: true, nodes :
+                        [
+                            {id : 'VisualforceRequest', text : 'Top VF Pages', img: 'icon-page'},
+                            {id : 'ApexExecution', text : 'Top Apex Executions', img: 'icon-page'},
+                            {id : 'API', text : 'Top APIs', img: 'icon-page'},
+                            {id : 'RestApi', text : 'Top RestApis', img: 'icon-page'},
+                            {id : 'ApexTrigger', text : 'Top Triggers', img: 'icon-page'},
+                            {id : 'html', text : '<Placeholder>', img: 'icon-page'}
+                        ]
+                    }
+                ],
+                onClick : function(event) {
+                    switch(event.target) {
+                        case 'VisualforceRequest' :
+                            gobalvars.eventType = 'VisualforceRequest';
+                            w2ui.weeklyglancegrid.url = 'http://localhost:3001/findTopVFPages?fromdate='+globalvars.fromDate+'&todate='+globalvars.toDate+'&eventype='+globalvars.eventType;
+                            w2ui.weeklyglancegrid.showolumn('PageName');
+                            w2ui.weeklyglancegrid.hideColumn('EntryPoint', 'MaxCallouttime','AvgCallouttime', 'EntityName', 'MethodName', 'TriggerName','MaxExectime', 'AvgExectime', 'Request');
+                            w2ui.weeklyglancelayout.content('main', w2ui.weeklyglancegrid);
+                            break;
+                        case 'ApexExecution' :
+                            gobalvars.eventType = 'ApexExecution';
+                            w2ui.weeklyglancegrid.url = 'http://localhost:3001/findTopApexExecutions?fromdate='+globalvars.fromDate+'&todate='+globalvars.toDate+'&eventype='+globalvars.eventType;
+                            w2ui.weeklyglancegrid.showolumn('EntryPoint', 'MaxCallouttime','AvgCallouttime');
+                            w2ui.weeklyglancegrid.hideColumn('PageName', 'EntityName', 'MethodName', 'TriggerName','MaxExectime', 'AvgExectime', 'Request');
+                            w2ui.weeklyglancelayout.content('main', w2ui.weeklyglancegrid);
+                            break; 
+                        case 'API' :
+                            gobalvars.eventType = 'API';
+                            w2ui.weeklyglancegrid.url = 'http://localhost:3001/findTopAPIs?fromdate='+globalvars.fromDate+'&todate='+globalvars.toDate+'&eventype='+globalvars.eventType;
+                            w2ui.weeklyglancegrid.showolumn('EntityName', 'MethodName');
+                            w2ui.weeklyglancegrid.hideColumn('EntryPoint', 'MaxCallouttime','AvgCallouttime', 'PageName', 'TriggerName','MaxExectime', 'AvgExectime', 'Request');
+                            w2ui.weeklyglancelayout.content('main', w2ui.weeklyglancegrid);
+                            break;
+                        case 'RestApi' :
+                            gobalvars.eventType = 'RestApi';
+                            w2ui.weeklyglancegrid.url = 'http://localhost:3001/findTopRESTAPIs?fromdate='+globalvars.fromDate+'&todate='+globalvars.toDate+'&eventype='+globalvars.eventType;
+                            w2ui.weeklyglancegrid.showolumn('EntityName', 'Request');
+                            w2ui.weeklyglancegrid.hideColumn('EntryPoint', 'MaxCallouttime','AvgCallouttime', 'PageName', 'TriggerName','MaxExectime', 'AvgExectime', 'MethodName');
+                            w2ui.weeklyglancelayout.content('main', w2ui.weeklyglancegrid);
+                            break; 
+                        case 'ApexTrigger' :
+                            gobalvars.eventType = 'ApexTrigger';
+                            w2ui.weeklyglancegrid.url = 'http://localhost:3001/findTopTriggers?fromdate='+globalvars.fromDate+'&todate='+globalvars.toDate+'&eventype='+globalvars.eventType;
+                            w2ui.weeklyglancegrid.showolumn('EntityName', 'TriggerName', 'ExecTime');
+                            w2ui.weeklyglancegrid.hideColumn('EntryPoint', 'MaxCallouttime','AvgCallouttime', 'PageName', 'MethodName','MaxRuntime', 'AvgRuntime', 'Request');
+                            w2ui.weeklyglancelayout.content('main', w2ui.weeklyglancegrid);
+                            break;
+                        case 'html':
+                            w2ui.weeklyglancelayout.content('main', '<div style="padding: 10px">Some HTML Content</div>');
+                            $(w2ui.weeklyglancelayout.panels('main'))
+                                .removeClass('w2ui-grid')
+                                .css({
+                                    'border-left'  : '1px solid silver'
+                                });
+                            break;
+                    }
+                }
+            },
+            grid : {
+                name : 'weeklyglancegrid',
+                header : '<B> Week At A Glance Report</B>',
+                method : 'GET',
+                toolbar : {
+                    items :[
+                        { type: 'break' },
+                        { type: 'spacer'},
+                        { type: 'button', id: 'exportdata', caption: 'Export Data', img: 'fa fa-download' },
+                    ],
+
+                    onClick : function(event) {
+                        switch(event.item.id){
+                            case 'exportdata' : 
+                            var csv = w2ui['flowOfEventsGrid'].records;
+                                var dataStr = "Timestamp, EntryPoint, EntityName, PageName, TriggerName, MethodName, Request, MaxRuntime, MaxCPUtime, AvgRuntime, AvgCPUtime, MaxDBtime, AvgDBtime,  MaxExectime, AvgExectime,  MaxCallouttime, AvgCallouttime, total\n";
+                                event.onComplete = function (){
+                                for(var i =0;i<csv.length; i++){
+                                    var csvrec = csv[i];
+                                   
+                                    dataStr = dataStr
+                                    + csvrec.Timestamp + ', '
+                                    + csvrec.Request + ', '
+                                    + csvrec.EntryPoint + ', '
+                                    + csvrec.EntityName + ', '
+                                    + csvrec.PageName + ', '
+                                    + csvrec.MethodName + ', '
+                                    + csvrec.Request + ', '
+                                    + csvrec.MaxRuntime + ', '
+                                    + csvrec.AvgRuntime + ', '
+                                    + csvrec.MaxCPUtime + ', '
+                                    + csvrec.AvgCPUtime + ', '
+                                    + csvrec.MaxDBtime + ', '
+                                    + csvrec.AvgDBtime + ', '
+                                    + csvrec.MaxExectime + ', '
+                                    + csvrec.AvgExectime + ', '
+                                    + csvrec.MaxCallouttime + ', '
+                                    + csvrec.AvgCallouttime + ', '
+                                    + csvrec.total + '\n';
+                                    csvrec = "";
+                                }
+                                exportData('Top_'+globalvars.eventType, dataStr);
+                                }
+                                csv = "";
+                                break;
+                            default : 
+                                break;
+                        }
+                    }
+                },
+                columns : [
+                    { field: 'Timestamp', caption: 'Timestamp', size: '120px' },
+                    { field: 'EntryPoint', caption: 'EntryPoint', size: '180px' },
+                    { field: 'EntityName', caption: 'EntityName', size: '180px' },
+                    { field: 'TriggerName', caption: 'TriggerName', size: '180px' },
+                    { field: 'MethodName', caption: 'MethodName', size: '180px' },
+                    { field: 'PageName', caption: 'PageName', size: '180px' },
+                    { field: 'Request', caption: 'Request', size: '180px' },
+                    { field: 'MaxRuntime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'AvgRuntime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'MaxCPUtime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'AvgCPUtime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'MaxExectime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'AvgExectime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'MaxDBtime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'AvgDBtime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'MaxCallouttime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'AvgCallouttime', caption: 'MaxRuntime', size: '90px' },
+                    { field: 'total', caption: 'Total Sample Count', size: '90px' },
+                ],
+                parser : function(responseText){
+                    var JSONData = $.parseJSON(responseText);
+                    var data = JSONData['records'];
+                    w2ui.weeklyglancegrid.total = data.length;
+					var recid = 1;
+					$(data).each(function(i,rec){
+                        rec.recid = recid++;
+                        rec.Timestamp = rec._id.Timestamp;
+                        rec.EntityName = rec._id.EntityName;
+                        rec.MethodName = rec._id.MethodName;
+                        rec.TriggerName = rec._id.TriggerName;
+                        rec.PageName = rec._id.PageName;
+                        rec.EntryPoint = rec._id.EntryPoint;
+                        rec.Request = rec._id.Request;
+					});
+					JSONData['records'] = data;
+					data = '';
+					return JSONData;
+                },
+                onClick : function(event){
+                    switch(event.target){
+                        case 'VisualforceRequest' :
+                            loadDoc('http://localhost:3001/drilldownTopVFPages/?pagename='+record.PageName+'&eventtype='+globalvars.eventType, showResults, 'trendchart');
+                            break;
+                        case 'ApexExecution' :
+                            loadDoc('http://localhost:3001/drilldownTopApexExecutions/?entrypoint='+record.EntryPoint+'&eventtype='+globalvars.eventType, showResults, 'trendchart');
+                            break; 
+                        case 'API' :
+                            loadDoc('http://localhost:3001/drilldownTopAPIs/?entityname='+record.EntityName+'&methodname='+record.MethodName+'&eventtype='+globalvars.eventType, showResults, 'trendchart');
+                            break;
+                        case 'RestApi' :
+                            loadDoc('http://localhost:3001/drilldownTopRESTAPIs/?entityname='+record.EntityName+'&request='+encodeURIComponent(ecord.Request)+'&eventtype='+globalvars.eventType, showResults, 'trendchart');
+                            break; 
+                        case 'ApexTrigger' :
+                            loadDoc('http://localhost:3001/drilldownTopTriggers/?entityname='+record.EntityName+'&triggername='+record.TriggerName+'&eventtype='+globalvars.eventType, showResults, 'trendchart');
+                            break;
+                        case 'html':
+                            w2ui.weeklyglancelayout.content('main', '<div style="padding: 10px">Some HTML Content</div>');
+                            $(w2ui.weeklyglancelayout.panels('main'))
+                                .removeClass('w2ui-grid')
+                                .css({
+                                    'border-left'  : '1px solid silver'
+                                });
+                            break;
+                    }
+                },
+                show : {
+                    toolbar	: true,
+                    footer	: true,
+                    header  : true,
+                    toolbarSearch	: true,
+                    toolbarColumns	: true,
+                    lineNumbers		: true,
+                    selectColumn	: true,
+                    toolbarSave   : false,
+                    expandColumn	: false
+                },
+                multiSelect : false,
+                autoLoad : false,
+            }
+        };
+
+        $(function(){
+            $('#contentlayoutid').w2layout(weeklyglanceconfig.layout);
+            w2ui.weeklyglancelayout.content('left', $().w2sidebar(weeklyglanceconfig.sidebar));
+            w2ui.weeklyglancelayout.content('main', '<div id="rawdataid" align="top" style="height:300px;"> </div>','blur');
+            w2ui.weeklyglancelayout.content('bottom', '<div id="trendchartid"> </div><div id="seriesid"> </div>','blur');
+            $("#rawdataid").w2grid(weeklyglanceconfig.grid);
+            $("#rawdataid").show();
+        });
+    </script>
+</body>
+</html>

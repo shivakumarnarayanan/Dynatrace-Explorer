@@ -1,0 +1,480 @@
+//toolinghelper1.js
+
+var jsforce = require('jsforce');
+const MongoClient = require('mongodb').MongoClient;
+const assert = require ('assert');
+
+//DB Server Connection URL 
+const url = 'mongodb://localhost:27017';
+const dbName = 'R21SITBAT' ;
+
+var fs = require("fs");
+var stream = require('stream');
+var _requestUrls = [];
+var _metadataContainerId = null;
+var _apexClassMemberId = null;
+//Hardcoded
+var _metadataContainerName = 'Turiya'
+
+var self = module.exports = {
+	//Query Explain Plan
+	explainPlan :function(req, res, conn){
+		console.log('In Query Explain Plan \n');
+		var query = req.body['querytext'];
+		console.log('Query --> '+query);
+		
+		var requestUrl = conn.instanceUrl + '/services/data/v45.0/query/?explain=' + encodeURIComponent(query);
+		var _request = {
+			url 	: requestUrl,
+			method 	: "get",
+			headers : {
+				"Authorization"	: "Bearer "+conn.accessToken,
+				"X-PrettyPrint"	: "1",
+				"Content-Type"	: "application/octet-stream;charset=UTF-8" 
+			}
+		};
+
+		conn.request(_request.url, _request.headers, (err, resp, data) =>{
+			if(err && (err.code == "ECONNRESET" || err.code == "ETIMEDOUT")){
+				console.log(" Error processing url "+_request.url);
+				return console.log("Error Code: "+ err.code);
+			}
+			console.log("Logging Response : "+ JSON.stringify(resp));
+			console.log("Logging Error : "+ JSON.stringify(err));
+			console.log("Logging Data : "+ JSON.stringify(data));
+			res.send(JSON.stringify(resp));
+		});
+	},
+
+	//Download Debug Logs
+	//List files from SF -> download the file contents -> Convert to JSON and write to another file
+	listFiles : function(req, res, headers, conn, url, compress){
+		var noOfFiles ;
+		var fileList = "";
+
+		//First call  the API to get the list of files from SF
+		conn.request(url, headers)
+			.thenCall(
+				function(err, results){
+					if(err) { return console.error(err); }
+					noOfFiles = results['totalSize'];
+					fileList = results['records'];
+					console.log('noOfFiles -->'+noOfFiles+'\nfileList --> '+JSON.stringify(fileList));
+					res.send(JSON.stringify(fileList));
+				}
+			);
+	},
+
+	//Set Trace flag for a user
+	setTraceFlag : function(req, res, conn, debugLevel, traceEntityId, callback){
+		var debugOptions = {
+			"DebugLevelId" 	: "7dl3g0000004CGi", 
+			"LogType"		: "USER_DEBUG",
+			//TODO -- current userid from userInfo. Need to pass userInfo to this function
+			"TraceEntityId"	: "0053g000000uciC", 
+			"StartDate" 	: new jsforce.SfDate().toString(),
+		};
+
+		console.log('Debug Options --> '+JSON.stringify(debugOptions));
+		//TODO -- current userid from userInfo. Need to pass userInfo to this function
+		conn.query("select id from ApexLog where LogUserId = '0053g000000uciC' limit 1")
+		.destroy('ApexLog', function(err, rets){
+			if(err) { return console.error(err); }
+			console.log('Deleting old Debug Logs for this user : ' + JSON.stringify(rets));
+		});
+		console.log('Creating a trace flag for the logged in user ...');
+		conn.tooling.sobject('TraceFlag').find("ExpirationDate >="+ new Date().toISOString())
+		.execute(async function(err, records){
+			if(err) { 
+				console.log('Error querying for Trace Flag');
+				return console.error(err); 
+			}
+			if(records.length <1){
+				conn.tooling.sobject('TraceFlag').create(debugOptions, function(err, res){
+					if(err) { 
+						console.log('Error setting Trace Flag');
+						return console.error(err); 
+					}
+					console.log('Created a new Trace Flag : '+ JSON.stringify(res));
+					return callback(JSON.stringify(res));
+				});
+			}
+			else {
+				console.log("Trace flag is already present and valid");
+			}
+			
+		});
+	},
+
+	//execute the code to be debugged and generate debug logs
+	apexPerf : function(req, res, conn, apexCode, userInfo){
+		var apexLogUrl;
+		var apexLogHeaders = {
+			"Authorization"	: "Bearer "+conn.accessToken,
+			"X-PrettyPrint"	: "1",
+			"Content-Type"	: "application/json"
+		};
+		self.setTraceFlag(req, res, conn, null, null, function(resp){
+			console.log('Trace Flag Created');
+		});
+
+		//Execute the ApexCode snippet
+		conn.tooling.executeAnonymous(apexCode)
+		.thenCall(function(err,resp){
+			if(err) { return console.error(err); }
+			console.log("ApexCode snippet compiled successfully ? : "+ resp.compiled);
+			console.log("ApexCode snippet executed successfully ? : "+ resp.success);
+			console.log("Processing ..."+ JSON.stringify(resp));
+
+			//If ApexCode snippet not compiled or not executed succssfully
+			if(!resp.compiled  && !resp.success){
+				console.log(JSON.stringify(resp));
+				return
+			}
+			else {
+				console.log("Not querying ApexExecutionOverlayResults here. Details to be displayed separately ");
+			}
+		})
+		.thenCall(function(err,resp){
+			if(err) { return console.error(err); }
+			self.getApexLogFile(conn, apexLogHeaders, function(apexUrl){
+				apexLogUrl = apexUrl +'/Body';
+				console.log('URL of ApexLog to be fetched : '+ apexLogUrl);
+				conn.request(apexLogUrl, apexLogHeaders)
+				.thenCall(function(err, results){
+					if(err) { return console.error(err); }
+					console.log('Sending ApexLog to the caller ...');
+					res.send('Debug Log :- '+results );
+				});
+			});
+		})
+		.catch((err) => {
+			console.log('Exception : '+err)
+		});
+	},
+
+	//Fetch and analyze generated debug logs
+	getApexLogFile : function(conn, headers, callback){
+		//TODO -- current userid from userInfo. Need to pass userInfo to this function
+		var noOfFiles ;
+		var fileList = "";
+		var id ;
+		var apexLogUrl;
+
+		console.log('Fetching Debuglog fileList ...');
+		//----- First, get list of Debuglog files from SF
+		var queryStr = "SELECT ID, LOGUSERID, LOGLENGTH, LASTMODIFIEDDATE, REQUEST, "
+			+ " OPERATION, APPLICATION, STATUS, DURATIONMILLISECONDS, "
+			+ " SYSTEMMODSTAMP, STARTTIME, LOCATION from APEXLOG "
+			+ " WHERE REQUEST = 'Api' "
+			//TODO -- current userid from userInfo. Need to pass userInfo to this function
+			+ " AND LOGUSERID = '0053g000000uciC' "
+			+ " ORDER BY STARTTIME DESC "
+			;
+		console.log('Querying ApexLog for Debuglog files');
+		var url = conn.instanceUrl+ '/services/data/v45.0/query?q=' + encodeURIComponent(queryStr);
+		console.log('URL of ApexLog to be fetched : '+ url);
+
+		conn.request(url, headers)
+		.thenCall(function(err, results){
+			if(err) { return console.error(err); }
+			noOfFiles = results['totalSize'];
+			fileList = results['records'];
+			console.log('noOfFiles -->'+noOfFiles+'\nfileList --> '+JSON.stringify(fileList));
+			
+			if(noOfFiles >0){
+				apexLogUrl = fileList[0].attributes.url;
+				callback(apexLogUrl);
+			}
+			else{
+				console.log('No ApexLogs found');
+				return;
+			}
+		});
+	},
+
+	// Fetch all sobjects - Currently fetches ApexClass and ApexTriggers
+	// This fetches only the names and their ids for the profiler to select the one to be profiled
+	getSObjects : function(req, res, conn, sObjectType, whereClause){
+		whereClause = " WHERE NOT NAME LIKE '%Test%'";
+		var queryStr = "SELECT ID, NAME FROM "+sObjectType
+			+ (whereClause != undefined)? whereClause :""
+			+ " ORDER BY NAME ASC"
+			;
+		var records = [];
+		var i=0;
+		conn.sobject(sObjectType).select("Id, Name").execute({
+			autoFetch : true, maxFetch : 10000
+		})
+		.on("record", function(record){
+			console.log("i : "+(++i));
+			records.push(record);
+		})
+		.on("end", function(results){
+			console.log("Results : "+results);
+			
+			var totalSize = records.length;
+			results = {'totalSize' : totalSize, 'records' : records };
+			console.log("In getSObjects...totalSize : "+totalSize+ "\nrecords : "+records[0]);
+			console.log("Records : "+records);
+			res.send(JSON.stringify(results));
+		})
+		.on("error", function(err){
+			console.error(err);
+		});
+		console.log("In getSObjects...End");
+	},
+
+	// Fetches details of the SObject like code and symboltable details
+	// This is used display code, setcheckpoints, delete checkpoints and other symboltable related functionalities
+	getSObjectDetails : function(req, res, conn, objectId, objectType){
+		var headers = {
+			"Authorization"	: "Bearer "+conn.accessToken,
+			"X-PrettyPrint"	: "1",
+			"Content-Type"	: "application/json" 
+		};
+		var url = conn.instanceUrl + '/services/data/v45.0/sobjects/' 
+			+ encodeURIComponent(objectType) 
+			+ '/' + encodeURIComponent(objectId) ;
+		console.log('URL of SObjectDetails to be fetched : '+ url);
+
+		conn.request(url, headers)
+		.thenCall(function(err, results){
+			if(err) { return console.error(err); }
+			res.send(JSON.stringify(results));
+		});
+	},
+
+	// fetch only the symboltable
+	getSymbolTable : function(req, res, conn, objectId, objectType, callback){
+		var headers = {
+			"Authorization"	: "Bearer "+conn.accessToken,
+			"X-PrettyPrint"	: "1",
+			"Content-Type"	: "application/json" 
+		};
+		var queryStr = "SELECT ID, BODY, SYMBOLTABLE FROM "+sObjectType
+			+ " WHERE ID = '" + objectId + "'"
+			+ " ORDER BY NAME ASC"
+			;
+		var url = conn.instanceUrl + '/services/data/v45.0/tooling/query/?q='+ encodeURIComponent(queryStr) ;	
+		console.log('URL for fetching getSymbolTable : '+ url);
+		var records = [];
+
+		conn.request(url, headers, function(err, results){
+			if(err) { return console.error(err); }
+			console.log('totalSize :'+results.totalSize);
+			console.log('fetched :'+results.records.length);
+			console.log('SymbolTable response :'+JSON.stringify(results));
+			
+			callback(results);
+		});
+	},
+
+	//Set Checkpoint for capturing governor limits and heapdump
+	setCheckpoint : function(req, res, conn, apexClassId, actionScript, actionScriptType, lineNos, callback){
+		actionScriptType = "Apex";
+		conn.tooling.sobject('ApexExecutionOverlayAction').create(
+		{
+			ActionScript 		: " System.debug('In Overlay Script execution');System.debug('Logging Governor Limits');",
+			actionScriptType 	: actionScriptType,
+			ExecutableEntityId	: apexClassId,
+			IsDumpingHeap		: true,
+			Iteration 			: "1",
+			Line 				: lineNos
+			//ScopeId  			: userId
+		}, function(err, resp){
+			console.log('Setting checkpoint ...');
+			if(err) { return console.error(err); }
+			return callback(resp);
+		});
+	},
+
+	//Delete Checkpoint
+	deleteCheckpoint : function(req, res, conn, apexClassId, lineNos, callback){
+		console.log('Deleting checkpoint ...');
+		conn.tooling.sobject('ApexExecutionOverlayAction')
+		.findOne({
+			ExecutableEntityId	: apexClassId,
+			Line 				: Number(lineNos),
+		}, function(err, resp){
+			if(err) { return console.error(err); }
+			console.log('Found a checkpoint to delete...'+JSON.stringify(resp));
+			conn.tooling.sobject('ApexExecutionOverlayAction').del(resp.Id, function(err, resp){
+				if(err) { return console.error(err); }
+				console.log('Deleting checkpoint '+JSON.stringify(resp));
+				return callback(resp);
+			});
+		});
+	},
+
+	// Fetch all the checkpoints to show in the code when the SObject is fetched
+	getCheckpoints : function(req, res, conn, objId, callback){
+		console.log('Fetching all checkpoints ...');
+		conn.tooling.sobject('ApexExecutionOverlayAction')
+		.find({
+			ExecutableEntityId	: apexClassId,
+		}, function(err, resp){
+			if(err) {  
+				console.error(err); 
+			}
+			else{
+				console.log('Found checkpoints for the SObject ...'+JSON.stringify(resp));
+				callback(resp);
+				res.send(JSON.stringify(resp));
+			}
+		});
+	},
+
+	// Fetches classname, and checkpoint details. The Id then used to fecth the heapdump for analysis 
+	getApexExecutionOverlayResultsList : function(req, res, conn, userId, callback){
+		/*var headers = {
+			"Authorization"	: "Bearer "+conn.accessToken,
+			"X-PrettyPrint"	: "1",
+			"Content-Type"	: "application/json" 
+		};*/
+		var queryStr = "SELECT ID, CLASSNAME, ACTIONSCRIPT, ACTIONTYPE, ITERATION, LINE, USERID, "
+			+ " CREATEDDATE, LASTMODIFIEDDATE FROM APEXEXECUTIONOVERLAYRESULT"
+			+ " WHERE USERID = '" + userId + "'"
+			;
+		//var url = conn.instanceUrl + '/services/data/v45.0/tooling/query/?q='+ encodeURIComponent(queryStr) ;	
+		//console.log('URL for Fetching ApexExecutionOverlayResults : '+ url);
+		//conn.request(url, headers);
+		
+		conn.tooling.query(queryStr, function(err, results){
+			if(err) { return console.error(err); }
+			//this is for sending the details in a format that the grid can parse
+			results.total = results.totalSize;
+
+			console.log('totalSize :'+results.totalSize);
+			console.log('fetched :'+results.records.length);
+			console.log('SymbolTable response :'+JSON.stringify(results));
+			
+			callback(results);
+		});
+	},
+	// Fecthes details for a specific checkpoint including heapdump.
+	getApexExecutionOverlayResultById : function(req, res, conn, aeorId, callback){
+		if(aeorId != null ){
+			conn.tooling.sobject('ApexExecutionOverlayResult')
+			.find({Id : aeorId}, function(err, results){
+				if(err) { console.log(' No ApexExecutionOverlayResult found. Error : '+err); }
+				else {
+					callback(results);
+				}
+			});
+		}
+	},
+
+	//-------------------------- For Code Changes, checkin and Deployment------------------
+	// Get MetadataContainer - Idea is to use the same container for a particular user
+	// This is not implemented fully as deployment functionlaities are not the focus of this performance explorer
+	getMetaDataContainer : function(req, res, conn, sObjectType, callback){
+
+	}, 
+
+	getApexClassMember : function(req, res, conn, metadataContainerId, apexClassId, codeBody, callback){
+
+	},
+
+	// 
+	getContainerAsyncRequest : function(req, res, conn, mcid, callback){
+
+	},
+
+	//
+	getObject : function(req, res, conn, callback){
+
+	},
+
+	// Execute Apex code for profiling
+	executeSObjectPerf : function(req, res, conn, sObjectType, sObject){
+
+	},
+
+	createSObjectByType : function(req, res, conn, sObjectType, codeBody){
+
+	}, 
+
+	updateSObjectWithPerf : function(req, res, conn, sObjectType, sObjectName){
+
+	},
+
+	deleteSObject : function(conn, sObjectType, sObjectName){},
+
+	getBulkAPIFailuresByJobID : function(req, res, conn, jobId ){
+		var headers = {
+			"Authorization"	: "Bearer "+conn.accessToken,
+			"X-PrettyPrint"	: "1",
+			"Content-Type"	: "application/json" 
+		};
+		
+		var url = conn.instanceUrl + '/services/data/v49.0/jobs/ingest/'+ encodeURIComponent(jobId)+'/failedResults' ;
+		console.log('URL for fetching get BulkAPI Failures : '+ url);
+		
+		conn.request(url, headers)
+		.thenCall(function(err, results){
+			if(err) { return console.error(err); }
+			res.send(SON.stringify(results));
+		});
+	},
+
+	getApexJobList : function(req, res, conn, tableName, fromDate, toDate, callback ){
+		var records = [];
+		console.log("Querying Apex Jobs");
+
+		fromDate = jsforce.SfDate.toDateTimeLiteral(fromDate);
+		toDate = jsforce.SfDate.toDateTimeLiteral(toDate);
+		
+		console.log("Querying Apex Jobs from "+fromDate+" to "+toDate);
+
+		conn.sobject('AsyncApexJob')
+		.find('CreatedDate > '+fromDate+ ' and CreatedDate < '+toDate )	
+		.autoFetch(true)
+		.maxFetch(100000)
+		.execute()
+		.on("record", function(record){
+			record.JOB_ID= record.Id;
+			records.push(record);
+		})
+		.on("end", function(result){
+			var totalSize = records.length;
+			result = {'totalSize' : totalSize, 'records' : records };
+			var buffSize = 8192;
+			var data = JSON.stringify(records);
+
+			const numChunks = Math.ceil(data.length/buffSize);
+			const chunks = new Array(numChunks);
+
+			for (let i = 0,o=0;i<numChunks; ++i,o+=buffSize) {
+				chunks[i] = data.substr(o,buffSize);
+			}
+			
+			console.log('chunks.length --->'+chunks.length);
+
+			var stream = fs.createWriteStream("./elf/eventlogs_AsyncApexJobs_"+Date.now()+".json", {flags : "a"});
+			
+			(async() => {
+				const start = process.memoryUsage().heapUsed;
+				for (var i = 0; i <chunks.length; i++) {
+					stream.write(chunks[i]);
+					chunks[i] = '';
+				}
+				const used = (process.memoryUsage().heapUsed - start)/1024/1024;
+				console.log(`${Math.round(used*100)/100} MB`);
+			})();		
+			stream.end();
+		})
+		.on("error", function(err){
+			console.error(err);
+		});
+	},
+
+	getOrgLimits : function(req, res, conn, userInfo){
+		conn.limits()
+		.thenCall(function(err, results){
+			if(err) {return console.error(err); }
+			console.log("Getting Org limits : "+ JSON.stringify(results) );
+			res.send(JSON.stringify(results));
+		});
+	}
+};
